@@ -58,7 +58,13 @@ static void print_usage(const char *prog_name)
 }
 
 #ifdef __linux__
-
+/*
+ * Attempts to kill all other processes with the name, prog_name, using SIGTERM.
+ * This does not kill itself.
+ * It is not guaranteed to kill all processes with the given name.
+ * Some processes may still survive if the effective user of this process has
+ * no permission to kill that process, or if the process ignores SIGTERM.
+ */
 static void kill_other_processes(const char *prog_name)
 {
     DIR *dir;
@@ -84,7 +90,7 @@ static void kill_other_processes(const char *prog_name)
             continue;
         if (DT_DIR != dir_ptr->d_type)
             continue;
-        for (char *dname = dir_ptr->d_name; *dname; dname++)
+        for (const char *dname = dir_ptr->d_name; *dname; dname++)
         {
             if (!isdigit(*dname))
             {
@@ -133,8 +139,12 @@ static void kill_other_processes(const char *prog_name)
 
 #elif _WIN32
 
+/*
+ * Attempts to kill all other processes with the name, prog_name.
+ */
 static void kill_other_processes(const char *prog_name)
 {
+    // FIXME: This function will kill the process itself too, which it should not do.
     char cmd[2048];
     if (snprintf_check(cmd, 2048, "taskkill /IM \"%s\" /F", prog_name))
     {
@@ -178,10 +188,13 @@ static DWORD WINAPI webThreadFn(void *arg)
 
 #endif
 
+/*
+ * The main entrypoint of the application
+ */
 int main(int argc, char **argv)
 {
     // Get basename of the program
-    char *prog_name = strrchr(argv[0], PATH_SEP);
+    const char *prog_name = strrchr(argv[0], PATH_SEP);
     if (!prog_name)
     {
         prog_name = argv[0];
@@ -230,7 +243,7 @@ int main(int argc, char **argv)
             case 'p': // app port
             {
                 char *endptr;
-                app_port = strtol(optarg, &endptr, 10);
+                app_port = (unsigned short)strtol(optarg, &endptr, 10);
                 if (*endptr != '\0' || endptr == optarg)
                 {
                     fprintf(stderr, "Invalid app port %s\n", optarg);
@@ -244,7 +257,7 @@ int main(int argc, char **argv)
             case 'w': // web port
             {
                 char *endptr;
-                web_port = strtol(optarg, &endptr, 10);
+                web_port = (unsigned short)strtol(optarg, &endptr, 10);
                 if (*endptr != '\0' || endptr == optarg)
                 {
                     fprintf(stderr, "Invalid web port %s\n", optarg);

@@ -111,12 +111,16 @@ int send_text_v1(socket_t *socket)
     return EXIT_SUCCESS;
 }
 
-int get_files_v1(socket_t *socket)
+/*
+ * Common function to get files in v1 and v2.
+ */
+static int _get_files_common(int version, socket_t *socket, list2 *file_list, size_t path_len)
 {
-    list2 *file_list = get_copied_files();
     if (!file_list || file_list->len == 0)
     {
         write_sock(socket, &(char){STATUS_NO_DATA}, 1);
+        if (file_list)
+            free_list(file_list);
         return EXIT_SUCCESS;
     }
 
@@ -135,25 +139,41 @@ int get_files_v1(socket_t *socket)
     status = EXIT_SUCCESS;
     for (size_t i = 0; i < file_cnt; i++)
     {
-        char *file_path = files[i];
+        const char *file_path = files[i];
 #ifdef DEBUG_MODE
         printf("file name = %s\n", file_path);
 #endif
 
-        char *tmp_fname = strrchr(file_path, PATH_SEP);
-        if (tmp_fname == NULL)
+        const char *tmp_fname;
+        switch (version)
         {
-            tmp_fname = file_path;
-        }
-        else
+        case 1:
         {
-            tmp_fname++; // remove '/'
+            tmp_fname = strrchr(file_path, PATH_SEP);
+            if (tmp_fname == NULL)
+            {
+                tmp_fname = file_path;
+            }
+            else
+            {
+                tmp_fname++; // remove '/'
+            }
+            break;
         }
-        size_t _tmp_len = strlen(tmp_fname);
+        case 2:
+        {
+            tmp_fname = file_path + path_len;
+            break;
+        }
+        default:
+            goto END;
+        }
+
+        const size_t _tmp_len = strlen(tmp_fname);
         char filename[_tmp_len + 1];
         strncpy(filename, tmp_fname, _tmp_len);
         filename[_tmp_len] = 0;
-        size_t fname_len = strlen(filename);
+        const size_t fname_len = strlen(filename);
         if (fname_len > MAX_FILE_NAME_LENGTH)
         {
             status = EXIT_FAILURE;
@@ -186,6 +206,19 @@ int get_files_v1(socket_t *socket)
             status = EXIT_FAILURE;
             goto END;
         }
+
+#if PATH_SEP != '/'
+        if (version != 1)
+        {
+            // path separator is always / when communicating with the client
+            for (size_t ind = 0; ind < fname_len; ind++)
+            {
+                if (filename[ind] == PATH_SEP)
+                    filename[ind] = '/';
+            }
+        }
+#endif
+
         if (write_sock(socket, filename, fname_len) == EXIT_FAILURE)
         {
             fclose(fp);
@@ -221,6 +254,61 @@ END:
     return status;
 }
 
+int get_files_v1(socket_t *socket)
+{
+    list2 *file_list = get_copied_files();
+    return _get_files_common(1, socket, file_list, 0);
+}
+
+/*
+ * Common function to save files in send_files method of v1 and v2.
+ */
+static int _save_file_common(socket_t *socket, const char *file_name)
+{
+    FILE *file = fopen(file_name, "wb");
+    if (!file)
+        return EXIT_FAILURE;
+
+    ssize_t file_size = read_size(socket);
+#ifdef DEBUG_MODE
+    printf("data len = %zi\n", file_size);
+#endif
+    if (file_size < 0 || file_size > MAX_FILE_SIZE)
+    {
+        fclose(file);
+        return EXIT_FAILURE;
+    }
+
+    char data[FILE_BUF_SZ];
+    while (file_size)
+    {
+        size_t read_len = file_size < FILE_BUF_SZ ? file_size : FILE_BUF_SZ;
+        if (read_sock(socket, data, read_len) == EXIT_FAILURE)
+        {
+#ifdef DEBUG_MODE
+            puts("recieve error");
+#endif
+            fclose(file);
+            remove(file_name);
+            return EXIT_FAILURE;
+        }
+        if (fwrite(data, 1, read_len, file) < read_len)
+        {
+            fclose(file);
+            remove(file_name);
+            return EXIT_FAILURE;
+        }
+        file_size -= read_len;
+    }
+
+    fclose(file);
+
+#ifdef DEBUG_MODE
+    printf("file saved : %s\n", new_path);
+#endif
+    return EXIT_SUCCESS;
+}
+
 int send_file_v1(socket_t *socket)
 {
     if (write_sock(socket, &(char){STATUS_OK}, 1) == EXIT_FAILURE)
@@ -234,7 +322,7 @@ int send_file_v1(socket_t *socket)
         return EXIT_FAILURE;
     }
 
-    const ssize_t name_max_len = name_length + 16;
+    const int name_max_len = (int)(name_length + 16);
     char file_name[name_max_len + 1];
     if (read_sock(socket, file_name, name_length) == EXIT_FAILURE)
     {
@@ -246,25 +334,20 @@ int send_file_v1(socket_t *socket)
     file_name[name_length] = 0;
     // get only the base name
     {
-        char *base_name = strrchr(file_name, '/'); // path separator is / when communicating with the client
+        const char *base_name = strrchr(file_name, '/'); // path separator is / when communicating with the client
         if (base_name)
         {
             base_name++;                                          // don't want the '/' before the file name
             memmove(file_name, base_name, strlen(base_name) + 1); // overlapping memory area
         }
-        if (PATH_SEP != '/' && strchr(file_name, PATH_SEP)) // file name can't contain PATH_SEP
+#if PATH_SEP != '/'
+        if (strchr(file_name, PATH_SEP)) // file name can't contain PATH_SEP
             return EXIT_FAILURE;
+#endif
     }
 
     // PATH_SEP is not allowed in file name
     if (strchr(file_name, PATH_SEP))
-        return EXIT_FAILURE;
-
-    ssize_t file_size = read_size(socket);
-#ifdef DEBUG_MODE
-    printf("data len = %zi\n", file_size);
-#endif
-    if (file_size < 0 || file_size > MAX_FILE_SIZE)
         return EXIT_FAILURE;
 
     // if file already exists, use a different file name
@@ -292,36 +375,7 @@ int send_file_v1(socket_t *socket)
         file_name[name_max_len] = 0;
     }
 
-    FILE *file = fopen(file_name, "wb");
-    if (!file)
-        return EXIT_FAILURE;
-    char data[FILE_BUF_SZ];
-    while (file_size)
-    {
-        size_t read_len = file_size < FILE_BUF_SZ ? file_size : FILE_BUF_SZ;
-        if (read_sock(socket, data, read_len) == EXIT_FAILURE)
-        {
-#ifdef DEBUG_MODE
-            puts("recieve error");
-#endif
-            fclose(file);
-            remove(file_name);
-            return EXIT_FAILURE;
-        }
-        if (fwrite(data, 1, read_len, file) < read_len)
-        {
-            fclose(file);
-            remove(file_name);
-            return EXIT_FAILURE;
-        }
-        file_size -= read_len;
-    }
-
-    fclose(file);
-#ifdef DEBUG_MODE
-    puts("file saved");
-#endif
-    return EXIT_SUCCESS;
+    return _save_file_common(socket, file_name);
 }
 
 int get_image_v1(socket_t *socket)
@@ -385,116 +439,7 @@ int info_v1(socket_t *socket)
 int get_files_v2(socket_t *socket)
 {
     dir_files copied_dir_files = get_copied_dirs_files();
-    list2 *file_list = copied_dir_files.lst;
-    size_t path_len = copied_dir_files.path_len;
-    if (!file_list)
-    {
-        write_sock(socket, &(char){STATUS_NO_DATA}, 1);
-        return EXIT_SUCCESS;
-    }
-
-    int status = EXIT_FAILURE;
-    size_t file_cnt = file_list->len;
-    char **files = (char **)file_list->array;
-#ifdef DEBUG_MODE
-    printf("%zu file(s)\n", file_cnt);
-#endif
-    if (write_sock(socket, &(char){STATUS_OK}, 1) == EXIT_FAILURE)
-        goto END;
-
-    if (send_size(socket, file_cnt) == EXIT_FAILURE)
-        goto END;
-
-    status = EXIT_SUCCESS;
-    for (size_t i = 0; i < file_cnt; i++)
-    {
-        char *file_path = files[i];
-#ifdef DEBUG_MODE
-        printf("file name = %s\n", file_path);
-#endif
-
-        char *tmp_fname = file_path + path_len;
-        size_t _tmp_len = strlen(tmp_fname);
-        char filename[_tmp_len + 1];
-        strncpy(filename, tmp_fname, _tmp_len);
-        filename[_tmp_len] = 0;
-        size_t fname_len = strlen(filename);
-        if (fname_len > MAX_FILE_NAME_LENGTH)
-        {
-            status = EXIT_FAILURE;
-            goto END;
-        }
-
-        FILE *fp = fopen(file_path, "rb");
-        if (!fp)
-        {
-#ifdef DEBUG_MODE
-            printf("File open failed\n");
-#endif
-            status = EXIT_FAILURE;
-            continue;
-        }
-        ssize_t file_size = get_file_size(fp);
-        if (file_size < 0 || file_size > MAX_FILE_SIZE)
-        {
-#ifdef DEBUG_MODE
-            printf("file size = %zi\n", file_size);
-#endif
-            fclose(fp);
-            status = EXIT_FAILURE;
-            continue;
-        }
-
-        if (send_size(socket, fname_len) == EXIT_FAILURE)
-        {
-            fclose(fp);
-            status = EXIT_FAILURE;
-            goto END;
-        }
-
-        // path separator is always / when communicating with the client
-        if (PATH_SEP != '/')
-        {
-            for (size_t ind = 0; ind < fname_len; ind++)
-            {
-                if (filename[ind] == PATH_SEP)
-                    filename[ind] = '/';
-            }
-        }
-
-        if (write_sock(socket, filename, fname_len) == EXIT_FAILURE)
-        {
-            fclose(fp);
-            status = EXIT_FAILURE;
-            goto END;
-        }
-        if (send_size(socket, file_size) == EXIT_FAILURE)
-        {
-            fclose(fp);
-            status = EXIT_FAILURE;
-            goto END;
-        }
-
-        char data[FILE_BUF_SZ];
-        while (file_size > 0)
-        {
-            size_t read = fread(data, 1, FILE_BUF_SZ, fp);
-            if (read)
-            {
-                if (write_sock(socket, data, read) == EXIT_FAILURE)
-                {
-                    fclose(fp);
-                    status = EXIT_FAILURE;
-                    goto END;
-                }
-                file_size -= read;
-            }
-        }
-        fclose(fp);
-    }
-END:
-    free_list(file_list);
-    return status;
+    return _get_files_common(2, socket, copied_dir_files.lst, copied_dir_files.path_len);
 }
 
 static int save_file(socket_t *socket, const char *dirname)
@@ -519,29 +464,28 @@ static int save_file(socket_t *socket, const char *dirname)
 
     file_name[name_length] = 0;
 
+#if PATH_SEP != '/'
     // replace '/' with PATH_SEP
-    if (PATH_SEP != '/')
+    for (ssize_t ind = 0; ind < name_length; ind++)
     {
-        for (ssize_t ind = 0; ind < name_length; ind++)
+        if (file_name[ind] == '/')
         {
-            if (file_name[ind] == '/')
-            {
-                file_name[ind] = PATH_SEP;
-                if (ind > 0 && file_name[ind - 1] == PATH_SEP)
-                    return EXIT_FAILURE; // "//" in path not allowed
-            }
+            file_name[ind] = PATH_SEP;
+            if (ind > 0 && file_name[ind - 1] == PATH_SEP)
+                return EXIT_FAILURE; // "//" in path not allowed
         }
     }
+#endif
 
     char new_path[name_length + 20];
     if (file_name[0] == PATH_SEP)
     {
-        if (snprintf_check(new_path, name_length + 20, "%s%s", dirname, file_name))
+        if (snprintf_check(new_path, (int)(name_length + 20), "%s%s", dirname, file_name))
             return EXIT_FAILURE;
     }
     else
     {
-        if (snprintf_check(new_path, name_length + 20, "%s%c%s", dirname, PATH_SEP, file_name))
+        if (snprintf_check(new_path, (int)(name_length + 20), "%s%c%s", dirname, PATH_SEP, file_name))
             return EXIT_FAILURE;
     }
 
@@ -550,7 +494,7 @@ static int save_file(socket_t *socket, const char *dirname)
         char bad_path[] = "/../";
         bad_path[0] = PATH_SEP;
         bad_path[3] = PATH_SEP;
-        char *ptr = strstr(new_path, bad_path);
+        const char *ptr = strstr(new_path, bad_path);
         if (ptr)
         {
             return EXIT_FAILURE;
@@ -573,44 +517,7 @@ static int save_file(socket_t *socket, const char *dirname)
     if (file_exists(new_path))
         return EXIT_FAILURE;
 
-    ssize_t file_size = read_size(socket);
-#ifdef DEBUG_MODE
-    printf("data len = %zi\n", file_size);
-#endif
-    if (file_size < 0 || file_size > MAX_FILE_SIZE)
-        return EXIT_FAILURE;
-
-    FILE *file = fopen(new_path, "wb");
-    if (!file)
-        return EXIT_FAILURE;
-    char data[FILE_BUF_SZ];
-    while (file_size)
-    {
-        size_t read_len = file_size < FILE_BUF_SZ ? file_size : FILE_BUF_SZ;
-        if (read_sock(socket, data, read_len) == EXIT_FAILURE)
-        {
-#ifdef DEBUG_MODE
-            puts("recieve error");
-#endif
-            fclose(file);
-            remove(file_name);
-            return EXIT_FAILURE;
-        }
-        if (fwrite(data, 1, read_len, file) < read_len)
-        {
-            fclose(file);
-            remove(file_name);
-            return EXIT_FAILURE;
-        }
-        file_size -= read_len;
-    }
-
-    fclose(file);
-
-#ifdef DEBUG_MODE
-    printf("file saved : %s\n", new_path);
-#endif
-    return EXIT_SUCCESS;
+    return _save_file_common(socket, new_path);
 }
 
 int send_files_v2(socket_t *socket)
@@ -646,7 +553,7 @@ int send_files_v2(socket_t *socket)
     for (size_t i = 0; i < files->len; i++)
     {
         char *filename = files->array[i];
-        size_t name_len = strlen(filename);
+        const int name_len = (int)strlen(filename);
         char old_path[name_len + 20];
         if (snprintf_check(old_path, name_len + 20, "%s%c%s", dirname, PATH_SEP, filename))
         {
