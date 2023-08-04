@@ -21,6 +21,9 @@ jobs:
           ref: ${{github.head_ref}}
           fetch-depth: 0
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
       - name: Install Dependencies
         run: sudo apt-get -y install gcc make libc6-dev libx11-dev libxmu-dev libpng-dev libssl-dev
       - name: Install sonar-scanner and build-wrapper
