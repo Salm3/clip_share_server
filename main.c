@@ -33,6 +33,7 @@
 #include <dirent.h>
 #include <ctype.h>
 #elif _WIN32
+#include <tlhelp32.h>
 #include "win_getopt/getopt.h"
 #endif
 
@@ -51,9 +52,9 @@ static void kill_other_processes(const char *);
 static void print_usage(const char *prog_name)
 {
 #ifdef NO_WEB
-    fprintf(stderr, "Usage: %s [-h] [-s] [-r] [-p app_port]\n", prog_name);
+    fprintf(stderr, "Usage: %s [-h] [-s] [-r] [-R] [-p app_port]\n", prog_name);
 #else
-    fprintf(stderr, "Usage: %s [-h] [-s] [-r] [-p app_port] [-w web_port]\n", prog_name);
+    fprintf(stderr, "Usage: %s [-h] [-s] [-r] [-R] [-p app_port] [-w web_port]\n", prog_name);
 #endif
 }
 
@@ -144,16 +145,23 @@ static void kill_other_processes(const char *prog_name)
  */
 static void kill_other_processes(const char *prog_name)
 {
-    // FIXME: This function will kill the process itself too, which it should not do.
-    char cmd[2048];
-    if (snprintf_check(cmd, 2048, "taskkill /IM \"%s\" /F", prog_name))
+    DWORD this_pid = GetCurrentProcessId();
+    PROCESSENTRY32 entry;
+    entry.dwSize = sizeof(PROCESSENTRY32);
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (Process32First(snapshot, &entry) == TRUE)
     {
-#ifdef DEBUG_MODE
-        fprintf(stderr, "Error writing taskkill command\n");
-#endif
-        return;
+        while (Process32Next(snapshot, &entry) == TRUE)
+        {
+            if ((stricmp(entry.szExeFile, prog_name) == 0) && (entry.th32ProcessID != this_pid))
+            {
+                HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, entry.th32ProcessID);
+                TerminateProcess(hProcess, 0);
+                CloseHandle(hProcess);
+            }
+        }
     }
-    system(cmd);
+    CloseHandle(snapshot);
 }
 
 static DWORD WINAPI udpThreadFn(void *arg)
@@ -211,70 +219,74 @@ int main(int argc, char **argv)
 
     // Parse args
     int stop = 0;
-    int restart = 0;
+    int restart = configuration.restart >= 0 ? configuration.restart : 1;
     unsigned short app_port = configuration.app_port > 0 ? configuration.app_port : APP_PORT;
     unsigned short app_port_secure = configuration.app_port_secure > 0 ? configuration.app_port_secure : APP_PORT_SECURE;
 #ifndef NO_WEB
     unsigned short web_port = configuration.web_port > 0 ? configuration.web_port : WEB_PORT;
 #endif
 
+    // Parse command line arguments
+    int opt;
+    while ((opt = getopt(argc, argv, "hsrRp:w:")) != -1)
     {
-        int opt;
-        while ((opt = getopt(argc, argv, "hsrp:w:")) != -1)
+        switch (opt)
         {
-            switch (opt)
+        case 'h': // help
+        {
+            print_usage(prog_name);
+            clear_config(&configuration);
+            exit(EXIT_SUCCESS);
+        }
+        case 's': // stop
+        {
+            stop = 1;
+            break;
+        }
+        case 'r': // restart
+        {
+            restart = 1;
+            break;
+        }
+        case 'R': // no-restart
+        {
+            restart = 0;
+            break;
+        }
+        case 'p': // app port
+        {
+            char *endptr;
+            app_port = (unsigned short)strtol(optarg, &endptr, 10);
+            if (*endptr != '\0' || endptr == optarg)
             {
-            case 'h': // help
-            {
-                print_usage(prog_name);
-                clear_config(&configuration);
-                exit(EXIT_SUCCESS);
-            }
-            case 's': // stop
-            {
-                stop = 1;
-                break;
-            }
-            case 'r': // restart
-            {
-                restart = 1;
-                break;
-            }
-            case 'p': // app port
-            {
-                char *endptr;
-                app_port = (unsigned short)strtol(optarg, &endptr, 10);
-                if (*endptr != '\0' || endptr == optarg)
-                {
-                    fprintf(stderr, "Invalid app port %s\n", optarg);
-                    print_usage(prog_name);
-                    clear_config(&configuration);
-                    exit(EXIT_FAILURE);
-                }
-                break;
-            }
-#ifndef NO_WEB
-            case 'w': // web port
-            {
-                char *endptr;
-                web_port = (unsigned short)strtol(optarg, &endptr, 10);
-                if (*endptr != '\0' || endptr == optarg)
-                {
-                    fprintf(stderr, "Invalid web port %s\n", optarg);
-                    print_usage(prog_name);
-                    clear_config(&configuration);
-                    exit(EXIT_FAILURE);
-                }
-                break;
-            }
-#endif
-            default:
-            {
+                fprintf(stderr, "Invalid app port %s\n", optarg);
                 print_usage(prog_name);
                 clear_config(&configuration);
                 exit(EXIT_FAILURE);
             }
+            break;
+        }
+#ifndef NO_WEB
+        case 'w': // web port
+        {
+            char *endptr;
+            web_port = (unsigned short)strtol(optarg, &endptr, 10);
+            if (*endptr != '\0' || endptr == optarg)
+            {
+                fprintf(stderr, "Invalid web port %s\n", optarg);
+                print_usage(prog_name);
+                clear_config(&configuration);
+                exit(EXIT_FAILURE);
             }
+            break;
+        }
+#endif
+        default:
+        {
+            print_usage(prog_name);
+            clear_config(&configuration);
+            exit(EXIT_FAILURE);
+        }
         }
     }
 
@@ -317,6 +329,8 @@ int main(int argc, char **argv)
             snprintf_check(err, 3072, "Failed changing working directory to \'%s\'", configuration.working_dir);
             fprintf(stderr, "%s\n", err);
             error_exit(err);
+            clear_config(&configuration);
+            return EXIT_FAILURE;
         }
         char *new_work_dir = getcwd(NULL, 0);
         if (old_work_dir == NULL || new_work_dir == NULL)
@@ -324,6 +338,8 @@ int main(int argc, char **argv)
             char *err = "Error occured during changing working directory.";
             fprintf(stderr, "%s\n", err);
             error_exit(err);
+            clear_config(&configuration);
+            return EXIT_FAILURE;
         }
         // if the working directory did not change, set configuration.working_dir to NULL
         if (!strcmp(old_work_dir, new_work_dir))

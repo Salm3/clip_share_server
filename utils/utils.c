@@ -35,6 +35,8 @@
 #include "../xscreenshot/screenshot.h"
 #include "../globals.h"
 
+#define MAX(x, y) (x > y ? x : y)
+
 #define ERROR_LOG_FILE "server_err.log"
 #define RECURSE_DEPTH_MAX 256
 
@@ -136,7 +138,7 @@ int mkdirs(const char *dir_path)
             return EXIT_FAILURE;
     }
 
-    size_t len = strlen(dir_path);
+    size_t len = strnlen(dir_path, 2047);
     char path[len + 1];
     strncpy(path, dir_path, len);
     path[len] = 0;
@@ -201,6 +203,32 @@ list2 *list_dir(const char *dirname)
     return NULL;
 }
 
+void png_mem_write_data(png_structp png_ptr, png_bytep data, png_size_t length)
+{
+    struct mem_file *p = (struct mem_file *)png_get_io_ptr(png_ptr);
+    size_t nsize = p->size + length;
+
+    /* allocate or grow buffer */
+    if (p->buffer == NULL)
+    {
+        p->capacity = MAX(length, 1024);
+        p->buffer = malloc(p->capacity);
+    }
+    else if (nsize > p->capacity)
+    {
+        p->capacity *= 2;
+        p->capacity = MAX(nsize, p->capacity);
+        p->buffer = realloc(p->buffer, p->capacity);
+    }
+
+    if (!p->buffer)
+        png_error(png_ptr, "Write Error");
+
+    /* copy new bytes to end of buffer */
+    memcpy(p->buffer + p->size, data, length);
+    p->size += length;
+}
+
 /*
  * Recursively append all file paths in the directory and its subdirectories
  * to the list.
@@ -213,7 +241,7 @@ static void recurse_dir(const char *_path, list2 *lst, int depth)
     DIR *d = opendir(_path);
     if (d)
     {
-        size_t p_len = strlen(_path);
+        size_t p_len = strnlen(_path, 2047);
         char path[p_len + 2];
         strncpy(path, _path, p_len + 1);
         path[p_len + 1] = 0;
@@ -228,7 +256,7 @@ static void recurse_dir(const char *_path, list2 *lst, int depth)
             const char *filename = dir->d_name;
             if (!(strcmp(filename, ".") && strcmp(filename, "..")))
                 continue;
-            const  size_t _fname_len = strlen(filename);
+            const size_t _fname_len = strlen(filename);
             char pathname[_fname_len + p_len + 1];
             strncpy(pathname, path, p_len);
             strncpy(pathname + p_len, filename, _fname_len);
@@ -341,26 +369,24 @@ static char *get_copied_files_as_str()
             free(targets);
         return NULL;
     }
+    char found = 0;
+    char *copy = targets;
+    const char *token;
+    while ((token = strsep(&copy, "\n")))
     {
-        char found = 0;
-        char *copy = targets;
-        const char *token;
-        while ((token = strsep(&copy, "\n")))
+        if (!strcmp(token, expected_target))
         {
-            if (!strcmp(token, expected_target))
-            {
-                found = 1;
-                break;
-            }
+            found = 1;
+            break;
         }
-        if (!found)
-        {
+    }
+    if (!found)
+    {
 #ifdef DEBUG_MODE
-            puts("No copied files");
+        puts("No copied files");
 #endif
-            free(targets);
-            return NULL;
-        }
+        free(targets);
+        return NULL;
     }
     free(targets);
 
@@ -397,7 +423,7 @@ static int url_decode(char *str)
     if (strncmp("file://", str, 7))
         return EXIT_FAILURE;
     char *ptr1 = str;
-    char *ptr2 = strstr(str, "://");
+    const char *ptr2 = strstr(str, "://");
     if (!ptr2)
         return EXIT_FAILURE;
     ptr2 += 3;
@@ -438,7 +464,7 @@ list2 *get_copied_files()
     {
         return NULL;
     }
-    char *file_path = fnames + strlen(fnames);
+    char *file_path = fnames + strnlen(fnames, 8);
 
     size_t file_cnt = 1;
     for (char *ptr = file_path + 1; *ptr; ptr++)
@@ -459,7 +485,7 @@ list2 *get_copied_files()
     char *fname = file_path + 1;
     for (size_t i = 0; i < file_cnt; i++)
     {
-        size_t off = strlen(fname) + 1;
+        size_t off = strnlen(fname, 2047) + 1;
         if (url_decode(fname) == EXIT_FAILURE)
             break;
 
@@ -497,7 +523,7 @@ dir_files get_copied_dirs_files()
     {
         return ret;
     }
-    char *file_path = fnames + strlen(fnames);
+    char *file_path = fnames + strnlen(fnames, 8);
 
     size_t file_cnt = 1;
     for (char *ptr = file_path + 1; *ptr; ptr++)
@@ -519,7 +545,7 @@ dir_files get_copied_dirs_files()
     char *fname = file_path + 1;
     for (size_t i = 0; i < file_cnt; i++)
     {
-        const size_t off = strlen(fname) + 1;
+        const size_t off = strnlen(fname, 2047) + 1;
         if (url_decode(fname) == EXIT_FAILURE)
             break;
 
@@ -586,7 +612,8 @@ int get_clipboard_text(char **bufptr, size_t *lenptr)
         return EXIT_FAILURE;
     }
     *bufptr = data;
-    *lenptr = strlen(data);
+    *lenptr = strnlen(data, 4194304);
+    data[*lenptr] = 0;
     return EXIT_SUCCESS;
 }
 

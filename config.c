@@ -25,6 +25,8 @@
 #include "utils/list_utils.h"
 #include "config.h"
 
+#define LINE_MAX_LEN 2047
+
 /*
  * Trims all charactors in the range \x01 to \x20 inclusive from both ends of
  * the string in-place.
@@ -71,8 +73,9 @@ static list2 *get_client_list(const char *filename)
     char client[512];
     while (fscanf(f, "%511[^\n]%*c", client) != EOF)
     {
+        client[511] = 0;
         trim(client);
-        size_t len = strlen(client);
+        size_t len = strnlen(client, 512);
         if (len < 1)
             continue;
         if (client[0] == '#')
@@ -162,6 +165,12 @@ static void parse_line(char *line, config *cfg)
     trim(key);
     trim(value);
 
+    const size_t value_len = strnlen(value, LINE_MAX_LEN);
+    if (value_len <= 0 || value_len >= LINE_MAX_LEN)
+    {
+        return;
+    }
+
 #ifdef DEBUG_MODE
     printf("Key=%s : Value=%s\n", key, value);
 #endif
@@ -249,20 +258,22 @@ static void parse_line(char *line, config *cfg)
     }
     else if (!strcmp("working_dir", key))
     {
-        if (strlen(value) > 0)
-        {
-            if (cfg->working_dir)
-                free(cfg->working_dir);
-            cfg->working_dir = strdup(value);
-        }
+        if (cfg->working_dir)
+            free(cfg->working_dir);
+        cfg->working_dir = strdup(value);
     }
-    else if (!strcmp("bind_address", key))
+    else if (!strcmp("bind_address", key) && ipv4_aton(value, &(cfg->bind_addr)) != EXIT_SUCCESS)
     {
-        if (strlen(value) > 0 && ipv4_aton(value, &(cfg->bind_addr)) != EXIT_SUCCESS)
+        char msg[48];
+        snprintf_check(msg, 48, "Invalid bind address %s", value);
+        error_exit(msg);
+    }
+    else if (!strcmp("restart", key))
+    {
+        char is_true = is_true_str(value);
+        if (is_true >= 0)
         {
-            char msg[48];
-            snprintf_check(msg, 48, "Invalid bind address %s", value);
-            error_exit(msg);
+            cfg->restart = is_true;
         }
     }
 #ifdef DEBUG_MODE
@@ -291,7 +302,7 @@ config parse_conf(const char *file_name)
     cfg.server_cert = NULL;
     cfg.ca_cert = NULL;
     cfg.allowed_clients = NULL;
-
+    cfg.restart = -1;
     cfg.working_dir = NULL;
     if (ipv4_aton(NULL, &(cfg.bind_addr)) != EXIT_SUCCESS)
     {
@@ -317,10 +328,10 @@ config parse_conf(const char *file_name)
         return cfg;
     }
 
-    char line[2048];
-    line[2047] = 0;
+    char line[LINE_MAX_LEN + 1];
     while (fscanf(f, "%2047[^\n]%*c", line) != EOF)
     {
+        line[LINE_MAX_LEN] = 0;
         parse_line(line, &cfg);
     }
     fclose(f);
@@ -332,7 +343,7 @@ void clear_config(config *cfg)
 {
     if (cfg->priv_key)
     {
-        size_t len = strlen(cfg->priv_key);
+        size_t len = strnlen(cfg->priv_key, 65536);
         memset(cfg->priv_key, 0, len);
         free(cfg->priv_key);
     }

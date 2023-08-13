@@ -137,21 +137,21 @@ static int getClientCerts(const SSL *ssl, const list2 *allowed_clients)
     return verified ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-listener_t open_listener_socket(const int ssl_enabled, const char *priv_key, const char *server_cert, const char *ca_cert)
+listener_t open_listener_socket(const unsigned char sock_type, const char *priv_key, const char *server_cert, const char *ca_cert)
 {
     listener_t listener;
     listener.type = NULL_SOCK;
 
-    sock_t listener_d = socket(PF_INET, SOCK_STREAM, 0);
+    sock_t listener_d = socket(PF_INET, (sock_type == UDP_SOCK ? SOCK_DGRAM : SOCK_STREAM), 0);
     if (listener_d == INVALID_SOCKET)
     {
         error("Can\'t open socket");
         return listener;
     }
     listener.socket = listener_d;
-    if (!ssl_enabled)
+    if (sock_type != SSL_SOCK)
     {
-        listener.type = PLAIN_SOCK;
+        listener.type = sock_type;
         return listener;
     }
 
@@ -193,10 +193,10 @@ int ipv4_aton(const char *address_str, uint32_t *address_ptr)
         return EXIT_FAILURE;
     }
     struct in_addr addr;
-#ifdef _WIN32
-    if ((addr.s_addr = inet_addr(address_str)) == INADDR_NONE)
-#else
+#ifdef __linux__
     if (inet_aton(address_str, &addr) != 1)
+#elif _WIN32
+    if ((addr.s_addr = inet_addr(address_str)) == INADDR_NONE)
 #endif
     {
 #ifdef DEBUG_MODE
@@ -204,7 +204,11 @@ int ipv4_aton(const char *address_str, uint32_t *address_ptr)
 #endif
         return EXIT_FAILURE;
     }
+#ifdef __linux__
+    *address_ptr = addr.s_addr;
+#elif _WIN32
     *address_ptr = (uint32_t)addr.s_addr;
+#endif
     return EXIT_SUCCESS;
 }
 
@@ -213,28 +217,28 @@ int bind_port(listener_t listener, unsigned short port)
     if (listener.type == NULL_SOCK)
         return EXIT_FAILURE;
     sock_t socket = listener.socket;
-    struct sockaddr_in name;
-    name.sin_family = PF_INET;
-    name.sin_port = (in_port_t)htons(port);
-    name.sin_addr.s_addr = configuration.bind_addr;
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = configuration.bind_addr;
     int reuse = 1;
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int)) == -1)
+    if (listener.type != UDP_SOCK && setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int)) == -1)
     {
         error("Can't set the reuse option on the socket");
         return EXIT_FAILURE;
     }
-    int c = bind(socket, (struct sockaddr *)&name, sizeof(name));
-    if (c == -1)
+    if (bind(socket, (const struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
         char errmsg[32];
-        snprintf_check(errmsg, 32, "Can\'t bind to TCP port %hu", port);
+        char *tcp_udp = listener.type == UDP_SOCK ? "UDP" : "TCP";
+        snprintf_check(errmsg, 32, "Can\'t bind to %s port %hu", tcp_udp, port);
         error(errmsg);
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }
 
-socket_t get_connection(listener_t listener, list2 *allowed_clients)
+socket_t get_connection(listener_t listener, const list2 *allowed_clients)
 {
     socket_t sock;
     sock.type = NULL_SOCK;
@@ -470,13 +474,11 @@ int write_sock(socket_t *socket, const char *buf, size_t size)
 int send_size(socket_t *socket, ssize_t size)
 {
     char sz_buf[8];
+    ssize_t sz = size;
+    for (int i = sizeof(sz_buf) - 1; i >= 0; i--)
     {
-        ssize_t sz = size;
-        for (int i = sizeof(sz_buf) - 1; i >= 0; i--)
-        {
-            sz_buf[i] = sz & 0xff;
-            sz >>= 8;
-        }
+        sz_buf[i] = sz & 0xff;
+        sz >>= 8;
     }
     return write_sock(socket, sz_buf, sizeof(sz_buf));
 }
