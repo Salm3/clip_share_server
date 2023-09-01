@@ -16,14 +16,16 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "./config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "utils/utils.h"
-#include "utils/net_utils.h"
+#include "./globals.h"
 #include "utils/list_utils.h"
-#include "config.h"
+#include "utils/net_utils.h"
+#include "utils/utils.h"
 
 #define LINE_MAX_LEN 2047
 
@@ -33,26 +35,21 @@
  * The string must point to a valid and null-terminated string.
  * This does not re-allocate memory to shrink.
  */
-static void trim(char *string)
-{
+static inline void trim(char *string) {
     const char *ptr = string;
-    while (0 < *ptr && *ptr <= ' ')
-    {
+    while (0 < *ptr && *ptr <= ' ') {
         ptr++;
     }
     char *p1 = string;
-    while (*ptr)
-    {
+    while (*ptr) {
         *p1 = *ptr;
         p1++;
         ptr++;
     }
     *p1 = 0;
-    if (*string == 0)
-        return;
+    if (*string == 0) return;
     p1--;
-    while (0 < *p1 && *p1 <= ' ')
-    {
+    while (0 < *p1 && *p1 <= ' ') {
         *p1 = 0;
         p1--;
     }
@@ -64,22 +61,17 @@ static void trim(char *string)
  * Returns a list2* of null terminated strings as elements on success.
  * Returns null on error.
  */
-static list2 *get_client_list(const char *filename)
-{
+static inline list2 *get_client_list(const char *filename) {
     FILE *f = fopen(filename, "r");
-    if (!f)
-        return NULL;
+    if (!f) return NULL;
     list2 *client_list = init_list(1);
     char client[512];
-    while (fscanf(f, "%511[^\n]%*c", client) != EOF)
-    {
+    while (fscanf(f, "%511[^\n]%*c", client) != EOF) {
         client[511] = 0;
         trim(client);
         size_t len = strnlen(client, 512);
-        if (len < 1)
-            continue;
-        if (client[0] == '#')
-            continue;
+        if (len < 1) continue;
+        if (client[0] == '#') continue;
 #ifdef DEBUG_MODE
         printf("Client : %s\n", client);
 #endif
@@ -90,72 +82,77 @@ static list2 *get_client_list(const char *filename)
 }
 
 /*
- * Loads the content of a file given by the file_name.
- * File must not be empty and its size must be less than 64 KiB
- * Returns the malloced block of memory containing a null-terminated file content.
- * Returns null on error.
- * Note that if the file contained null byte in it, the length of the returned
- * string may be smaller than the allocated memory block.
+ * Loads the content of a file given by the file_name and set the buffer to the address pointed by ptr.
+ * File must not be empty and its size must be less than 64 KiB.
+ * ptr must be a valid pointer to a char*.
+ * If the char* pointed by ptr is not null. This will call free() on that char*
+ * Sets the malloced block of memory containing a null-terminated file content to the address pointed by ptr.
+ * Does not modify the ptr if an error occured.
+ * Note that if the file contained null byte in it, the length of the string may be smaller than the allocated memory
+ * block.
  */
-static char *load_file(const char *file_name)
-{
-    if (!file_name)
-        return NULL;
+static inline void load_file(const char *file_name, char **ptr) {
+    if (!file_name) return;
     FILE *file_ptr = fopen(file_name, "rb");
-    if (!file_ptr)
-        return NULL;
+    if (!file_ptr) return;
     ssize_t len = get_file_size(file_ptr);
-    if (len <= 0 || 65536 < len)
-    {
+    if (len <= 0 || 65536 < len) {
         fclose(file_ptr);
-        return NULL;
+        return;
     }
-    char *buf = (char *)malloc(len + 1);
-    if (!buf)
-    {
+    char *buf = (char *)malloc((size_t)len + 1);
+    if (!buf) {
         fclose(file_ptr);
-        return NULL;
+        return;
     }
-    ssize_t sz = (ssize_t)fread(buf, 1, len, file_ptr);
-    if (sz < len)
-    {
+    ssize_t sz = (ssize_t)fread(buf, 1, (size_t)len, file_ptr);
+    if (sz < len) {
         fclose(file_ptr);
         free(buf);
-        return NULL;
+        return;
     }
     buf[len] = 0;
+    if (*ptr) free(*ptr);
+    *ptr = buf;
     fclose(file_ptr);
-    return buf;
 }
 
 /*
  * str must be a valid and null-terminated string
- * Returns 1 if the string is "true" or "1".
- * Returns 0 if the string is "false" or "0".
- * Returns -1 otherwise.
+ * conf_ptr must be a valid pointer to a char
+ * Sets the value pointed by conf_ptr to 1 if the string is "true" or "1".
+ * Sets the value pointed by conf_ptr to 0 if the string is "false" or "0".
+ * Otherwise, does not change the value pointed by conf_ptr
  */
-static inline char is_true_str(const char *str)
-{
-    if (!strcasecmp("true", str) || !strcmp("1", str))
-    {
-        return 1;
+static inline void set_is_true(const char *str, char *conf_ptr) {
+    if (!strcasecmp("true", str) || !strcmp("1", str)) {
+        *conf_ptr = 1;
+    } else if (!strcasecmp("false", str) || !strcmp("0", str)) {
+        *conf_ptr = 0;
     }
-    else if (!strcasecmp("false", str) || !strcmp("0", str))
-    {
-        return 0;
+}
+
+/*
+ * str must be a valid and null-terminated string
+ * conf_ptr must be a valid pointer to an unsigned short
+ * Sets the value pointed by conf_ptr to the port number given as a string in str if that is a valid value between 0 and
+ * 65536.
+ * Otherwise, does not change the value pointed by conf_ptr
+ */
+static inline void set_port(const char *str, unsigned short *conf_ptr) {
+    long port = strtol(str, NULL, 10);
+    if (0 < port && port < 65536) {
+        *conf_ptr = (unsigned short)port;
     }
-    return -1;
 }
 
 /*
  * Parse a single line in the config file and update the config if the line
  * contained a valid configuration.
  */
-static void parse_line(char *line, config *cfg)
-{
+static void parse_line(char *line, config *cfg) {
     char *eq = strchr(line, '=');
-    if (!eq)
-    {
+    if (!eq) {
         return;
     }
     *eq = 0;
@@ -165,127 +162,65 @@ static void parse_line(char *line, config *cfg)
     trim(key);
     trim(value);
 
+    const size_t key_len = strnlen(key, LINE_MAX_LEN);
+    if (key_len <= 0 || key_len >= LINE_MAX_LEN) return;
+
     const size_t value_len = strnlen(value, LINE_MAX_LEN);
-    if (value_len <= 0 || value_len >= LINE_MAX_LEN)
-    {
-        return;
-    }
+    if (value_len <= 0 || value_len >= LINE_MAX_LEN) return;
+
+    if (key[0] == '#') return;
 
 #ifdef DEBUG_MODE
     printf("Key=%s : Value=%s\n", key, value);
 #endif
 
-    if (!strcmp("app_port", key))
-    {
-        long port = strtol(value, NULL, 10);
-        if (0 < port && port < 65536)
-        {
-            cfg->app_port = (unsigned short)port;
-        }
-    }
-    else if (!strcmp("insecure_mode_enabled", key))
-    {
-        char is_true = is_true_str(value);
-        if (is_true >= 0)
-        {
-            cfg->insecure_mode_enabled = is_true;
-        }
-    }
-    else if (!strcmp("app_port_secure", key))
-    {
-        long port = strtol(value, NULL, 10);
-        if (0 < port && port < 65536)
-        {
-            cfg->app_port_secure = (unsigned short)port;
-        }
-    }
-    else if (!strcmp("secure_mode_enabled", key))
-    {
-        char is_true = is_true_str(value);
-        if (is_true >= 0)
-        {
-            cfg->secure_mode_enabled = is_true;
-        }
-    }
+    if (!strcmp("app_port", key)) {
+        set_port(value, &(cfg->app_port));
+    } else if (!strcmp("insecure_mode_enabled", key)) {
+        set_is_true(value, &(cfg->insecure_mode_enabled));
+    } else if (!strcmp("app_port_secure", key)) {
+        set_port(value, &(cfg->app_port_secure));
+    } else if (!strcmp("secure_mode_enabled", key)) {
+        set_is_true(value, &(cfg->secure_mode_enabled));
 #ifndef NO_WEB
-    else if (!strcmp("web_port", key))
-    {
-        long port = strtol(value, NULL, 10);
-        if (0 < port && port < 65536)
-        {
-            cfg->web_port = (unsigned short)port;
-        }
-    }
-    else if (!strcmp("web_mode_enabled", key))
-    {
-        char is_true = is_true_str(value);
-        if (is_true >= 0)
-        {
-            cfg->web_mode_enabled = is_true;
-        }
-    }
+    } else if (!strcmp("web_port", key)) {
+        set_port(value, &(cfg->web_port));
+    } else if (!strcmp("web_mode_enabled", key)) {
+        set_is_true(value, &(cfg->web_mode_enabled));
 #endif
-    else if (!strcmp("server_key", key))
-    {
-        char *buf = load_file(value);
-        if (cfg->priv_key)
-            free(cfg->priv_key);
-        cfg->priv_key = buf;
-    }
-    else if (!strcmp("server_cert", key))
-    {
-        char *buf = load_file(value);
-        if (cfg->server_cert)
-            free(cfg->server_cert);
-        cfg->server_cert = buf;
-    }
-    else if (!strcmp("ca_cert", key))
-    {
-        char *buf = load_file(value);
-        if (cfg->ca_cert)
-            free(cfg->ca_cert);
-        cfg->ca_cert = buf;
-    }
-    else if (!strcmp("allowed_clients", key))
-    {
+    } else if (!strcmp("server_key", key)) {
+        load_file(value, &(cfg->priv_key));
+    } else if (!strcmp("server_cert", key)) {
+        load_file(value, &(cfg->server_cert));
+    } else if (!strcmp("ca_cert", key)) {
+        load_file(value, &(cfg->ca_cert));
+    } else if (!strcmp("allowed_clients", key)) {
         list2 *client_list = get_client_list(value);
-        if (client_list)
-        {
-            if (cfg->allowed_clients)
-                free_list(cfg->allowed_clients);
+        if (client_list) {
+            if (cfg->allowed_clients) free_list(cfg->allowed_clients);
             cfg->allowed_clients = client_list;
         }
-    }
-    else if (!strcmp("working_dir", key))
-    {
-        if (cfg->working_dir)
-            free(cfg->working_dir);
+    } else if (!strcmp("working_dir", key)) {
+        if (cfg->working_dir) free(cfg->working_dir);
         cfg->working_dir = strdup(value);
-    }
-    else if (!strcmp("bind_address", key) && ipv4_aton(value, &(cfg->bind_addr)) != EXIT_SUCCESS)
-    {
+    } else if (!strcmp("bind_address", key) && ipv4_aton(value, &(cfg->bind_addr)) != EXIT_SUCCESS) {
         char msg[48];
         snprintf_check(msg, 48, "Invalid bind address %s", value);
         error_exit(msg);
-    }
-    else if (!strcmp("restart", key))
-    {
-        char is_true = is_true_str(value);
-        if (is_true >= 0)
-        {
-            cfg->restart = is_true;
-        }
-    }
-#ifdef DEBUG_MODE
-    else
-    {
-        printf("Unknown key \"%s\"\n", key);
-    }
+    } else if (!strcmp("restart", key)) {
+        set_is_true(value, &(cfg->restart));
+#ifdef _WIN32
+    } else if (!strcmp("tray_icon", key)) {
+        set_is_true(value, &(cfg->tray_icon));
 #endif
+#ifdef DEBUG_MODE
+    } else {
+        printf("Unknown key \"%s\"\n", key);
+#endif
+    }
 }
 
-config parse_conf(const char *file_name)
-{
+config parse_conf(const char *file_name) {
     config cfg;
     cfg.app_port = 0;
     cfg.insecure_mode_enabled = -1;
@@ -302,15 +237,16 @@ config parse_conf(const char *file_name)
     cfg.server_cert = NULL;
     cfg.ca_cert = NULL;
     cfg.allowed_clients = NULL;
-    cfg.restart = -1;
     cfg.working_dir = NULL;
-    if (ipv4_aton(NULL, &(cfg.bind_addr)) != EXIT_SUCCESS)
-    {
+    cfg.restart = -1;
+#ifdef _WIN32
+    cfg.tray_icon = -1;
+#endif
+    if (ipv4_aton(NULL, &(cfg.bind_addr)) != EXIT_SUCCESS) {
         error_exit("Error initializing bind address");
     }
 
-    if (!file_name)
-    {
+    if (!file_name) {
 #ifdef DEBUG_MODE
         printf("File name is null\n");
 #endif
@@ -319,8 +255,7 @@ config parse_conf(const char *file_name)
     }
 
     FILE *f = fopen(file_name, "r");
-    if (!f)
-    {
+    if (!f) {
 #ifdef DEBUG_MODE
         printf("Error opening conf file\n");
 #endif
@@ -329,8 +264,7 @@ config parse_conf(const char *file_name)
     }
 
     char line[LINE_MAX_LEN + 1];
-    while (fscanf(f, "%2047[^\n]%*c", line) != EOF)
-    {
+    while (fscanf(f, "%2047[^\n]%*c", line) != EOF) {
         line[LINE_MAX_LEN] = 0;
         parse_line(line, &cfg);
     }
@@ -339,28 +273,22 @@ config parse_conf(const char *file_name)
     return cfg;
 }
 
-void clear_config(config *cfg)
-{
-    if (cfg->priv_key)
-    {
+void clear_config(config *cfg) {
+    if (cfg->priv_key) {
         size_t len = strnlen(cfg->priv_key, 65536);
         memset(cfg->priv_key, 0, len);
         free(cfg->priv_key);
     }
-    if (cfg->server_cert)
-    {
+    if (cfg->server_cert) {
         free(cfg->server_cert);
     }
-    if (cfg->ca_cert)
-    {
+    if (cfg->ca_cert) {
         free(cfg->ca_cert);
     }
-    if (cfg->working_dir)
-    {
+    if (cfg->working_dir) {
         free(cfg->working_dir);
     }
-    if (cfg->allowed_clients)
-    {
+    if (cfg->allowed_clients) {
         free_list(cfg->allowed_clients);
     }
 }

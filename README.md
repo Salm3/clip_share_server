@@ -1,4 +1,5 @@
-![Build](https://github.com/thevindu-w/clip_share_server/actions/workflows/build_and_test.yml/badge.svg?branch=master)
+![Build and Test](https://github.com/thevindu-w/clip_share_server/actions/workflows/build_and_test.yml/badge.svg?branch=master)
+![Check Style](https://github.com/thevindu-w/clip_share_server/actions/workflows/check_style.yml/badge.svg?branch=master)
 ![Last commit](https://img.shields.io/github/last-commit/thevindu-w/clip_share_server.svg?color=yellow)
 ![License](https://img.shields.io/github/license/thevindu-w/clip_share_server.svg?color=blue)
 
@@ -7,7 +8,7 @@
 ### Copy on one device. Paste on another device
 
 <br>
-This is the server that runs in the background. Cilents can connect to the server and share copied text, files, and images.
+This is the server that runs in the background. Clients can connect to the server and share copied text, files, and images.
 <br>
 <br>
 
@@ -24,24 +25,29 @@ This is the server that runs in the background. Cilents can connect to the serve
 
   On Linux, they can be installed with the following command:
 
-* On Debian or Ubuntu based distros,
+* On Debian-based or Ubuntu-based distros,
   ```bash
   sudo apt-get install gcc make
   ```
 
-* On Redhat or Fedora based distros,
+* On Redhat-based or Fedora-based distros,
   ```bash
   sudo yum install gcc make
   ```
 
-* On Arch based distros,
+* On Arch-based distros,
   ```bash
   sudo pacman -S gcc make
   ```
 
 #### Windows
 
-  On Windows, these tools can be installed with [MinGW](https://www.mingw-w64.org/).
+  On Windows, these tools can be installed with [MinGW](https://www.mingw-w64.org/).<br>
+  In an [MSYS2](https://www.msys2.org/) environment, these tools can be installed using pacman with the following command:
+  ```bash
+  pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-make
+  ```
+  You may need to rename (or copy) the `<MSYS2 directory>/mingw64/bin/mingw32-make.exe` to `<MSYS2 directory>/mingw64/bin/make.exe` before running the command `make`
 
 <br>
 
@@ -59,17 +65,17 @@ This is the server that runs in the background. Cilents can connect to the serve
 
   They can be installed with the following command:
 
-* On Debian or Ubuntu based distros,
+* On Debian-based or Ubuntu-based distros,
   ```bash
   sudo apt-get install libc6-dev libx11-dev libxmu-dev libpng-dev libssl-dev
   ```
 
-* On Redhat or Fedora based distros,
+* On Redhat-based or Fedora-based distros,
   ```bash
   sudo yum install glibc-devel libX11-devel libXmu-devel libpng-devel openssl-devel
   ```
 
-* On Arch based distros,
+* On Arch-based distros,
   ```bash
   sudo pacman -S libx11 libxmu libpng openssl
   ```
@@ -90,6 +96,10 @@ This is the server that runs in the background. Cilents can connect to the serve
 * [libpng16](https://packages.msys2.org/package/mingw-w64-x86_64-libpng?repo=mingw64)
 * [libssl](https://packages.msys2.org/package/mingw-w64-x86_64-openssl?repo=mingw64) (provided by OpenSSL)
 
+In an [MSYS2](https://www.msys2.org/) environment, these tools can be installed using pacman with the following command:
+```bash
+pacman -S mingw-w64-x86_64-openssl mingw-w64-x86_64-libpng
+```
 <br>
 
 ### Compiling
@@ -134,9 +144,9 @@ You may need to allow incoming connections to the above ports for the client to 
 <br>
 The following files should be created and placed in the `cert_keys/` directory and specified in the configuration file `clipshare.conf`. You may use different file names and paths to store the keys and certificates. Refer [OpenSSL manual](https://www.openssl.org/docs/manmaster/man1/openssl.html) for more information on generating keys.
 
-* `server.key` &ensp; : &nbsp; SSL/TLS key file for the server
-* `server.crt` &ensp; : &nbsp; SSL/TLS certificate file of the server
-* `ca.crt` &emsp;&emsp;&ensp; : &nbsp; SSL/TLS certificate of the CA which signed the server.crt
+* `server.key` &ensp; - &nbsp; SSL/TLS key file for the server
+* `server.crt` &ensp; - &nbsp; SSL/TLS certificate file of the server
+* `ca.crt` &emsp;&emsp;&ensp; - &nbsp; SSL/TLS certificate of the CA which signed the server.crt
 
 <br>
 <br>
@@ -147,7 +157,25 @@ The following files should be created and placed in the `cert_keys/` directory a
 - You can run the server from a terminal or the GUI (if the file manager supports executing programs by double-clicking on it)
 - When the server starts, it will not open any visible window. Instead, it will run in the background.
 - On Linux, if you start the program from the terminal, it should return immediately (the server will continue to run in the background).
-- If something goes wrong, it will create a `server_err.log` filefile. That file will contain what went wrong.
+- If something goes wrong, it will create a `server_err.log` file. That file will contain what went wrong.
+
+#### Command line options
+```
+./clip_share [-h] [-s] [-r] [-R]
+
+  -h     Help       - Display usage and exit.
+
+  -s     Stop       - Stop all instances of the server if any.
+
+  -r     Restart    - Stop other instances of the server if any,
+                      and restart the server. This option takes
+                      precedence over the restart value in the
+                      configuration file.
+
+  -R     No-Restart - Start the server without restarting. This
+                      option takes precedence over the restart
+                      value in the configuration file.
+```
 
 ### Connect the client application
 
@@ -176,6 +204,9 @@ allowed_clients=allowed_clients.txt
 working_dir=./path/to/work_dir
 bind_address=0.0.0.0
 restart=true
+
+# Windows only
+tray_icon=true
 ```
 
 Note that all the lines in the configuration file are optional. You may omit some lines if they need to get their default values.
@@ -195,8 +226,9 @@ Note that all the lines in the configuration file are optional. You may omit som
 | `ca_cert` | The TLS certificate file of the CA that signed the TLS certificate of the server. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the TLS certificate file of the CA | \<Unspecified\> |
 | `allowed_clients` | The text file containing a list of allowed clients (Common Name of client certificate), one name per each line. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the allowed-clients file | \<Unspecified\> |
 | `working_dir` | The working directory where the application should run. All the files, that are sent from a client, will be saved in this directory. It will follow symlinks if this is a path to a symlink. The user running this application should have write access to the directory | Absolute or relative path to an existing directory | . (Current directory) |
-| `bind_address` | The address of the interface to which the application should bind when listening for connections. It will listen on all interfaces if this is set to `0.0.0.0` | IPv4 address of an interface in a.b.c.d format or `0.0.0.0` | `0.0.0.0` |
+| `bind_address` | The address of the interface to which the application should bind when listening for connections. It will listen on all interfaces if this is set to `0.0.0.0` | IPv4 address of an interface in dot-decimal notation (ex: 192.168.37.5) or `0.0.0.0` | `0.0.0.0` |
 | `restart` | Whether the application should start or restart by default. The values `true` or `1` will make the server restart by default, while `false` or `0` will make it just start without stopping any running instances of the server. | `true`, `false`, `1`, `0` (Case insensitive) | `true` |
+| `tray_icon` | Whether the application should display a system tray icon. This option is available only on Windows. The values `true` or `1` will display a tray icon, while `false` or `0` will prevent displaying a tray icon. | `true`, `false`, `1`, `0` (Case insensitive) | `true` |
 
 <br>
 

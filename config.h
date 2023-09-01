@@ -16,14 +16,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _CONF_PARSE_
-#define _CONF_PARSE_
+#ifndef CONFIG_H_
+#define CONFIG_H_
 
 #include <stdint.h>
+
 #include "utils/list_utils.h"
 
-typedef struct _config
-{
+typedef struct _config {
     unsigned short app_port;
     unsigned short app_port_secure;
     char insecure_mode_enabled;
@@ -39,6 +39,9 @@ typedef struct _config
     char *working_dir;
     uint32_t bind_addr;
     char restart;
+#ifdef _WIN32
+    char tray_icon;
+#endif
 } config;
 
 /*
@@ -53,4 +56,4 @@ extern config parse_conf(const char *file_name);
  */
 extern void clear_config(config *conf);
 
-#endif
+#endif  // CONFIG_H_

@@ -16,12 +16,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _UTILS_
-#define _UTILS_
+#ifndef UTILS_UTILS_H_
+#define UTILS_UTILS_H_
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "list_utils.h"
+
+#include "../globals.h"
+#include "./list_utils.h"
 
 #ifdef __linux__
 #include <png.h>
@@ -35,14 +37,17 @@
 #define PATH_SEP '\\'
 #endif
 
-#define error(msg) _error(msg, 0)
-#define error_exit(msg) _error(msg, 1)
+#define error_exit(msg)               \
+    {                                 \
+        error(msg);                   \
+        clear_config(&configuration); \
+        exit(1);                      \
+    }
 
 /*
  * In-memory file to write png image
  */
-struct mem_file
-{
+struct mem_file {
     char *buffer;
     size_t capacity;
     size_t size;
@@ -51,8 +56,7 @@ struct mem_file
 /*
  * List of files and the length of the path of their parent directory
  */
-typedef struct _dir_files
-{
+typedef struct _dir_files {
     size_t path_len;
     list2 *lst;
 } dir_files;
@@ -62,12 +66,12 @@ typedef struct _dir_files
  * returns 1 if snprintf failed or truncated
  * returns 0 otherwise
  */
-int snprintf_check(char *dest, int size, const char *fmt, ...);
+int snprintf_check(char *dest, size_t size, const char *fmt, ...) __attribute__((__format__(gnu_printf, 3, 4)));
 
 /*
  * Append error message to error log file
  */
-extern void _error(const char *msg, int exit_process);
+extern void error(const char *msg);
 
 /*
  * Get copied text from clipboard.
@@ -85,7 +89,7 @@ extern int get_clipboard_text(char **bufptr, size_t *lenptr);
  * Reads len bytes of text from the data buffer and copies it into the clipboard.
  * returns EXIT_SUCCESS on success and EXIT_FAILURE on failure.
  */
-extern int put_clipboard_text(const char *data, const size_t len);
+extern int put_clipboard_text(char *data, size_t len);
 
 /*
  * Get copied image from clipboard. If there is no image, get a screenshot instead.
@@ -124,6 +128,7 @@ extern int file_exists(const char *file_name);
  */
 extern int is_directory(const char *path, int follow_symlinks);
 
+#if (PROTOCOL_MIN <= 2) && (2 <= PROTOCOL_MAX)
 /*
  * Creates the directory given by the path and all its parent directories if missing.
  * Will not delete any existing files or directories.
@@ -144,6 +149,7 @@ extern list2 *list_dir(const char *dirname);
  * returns directories and files on success and set the path_len to 0 and file list to NULL on failure.
  */
 extern dir_files get_copied_dirs_files(void);
+#endif
 
 /*
  * The function to be used as png write data function in libpng to write the
@@ -152,4 +158,4 @@ extern dir_files get_copied_dirs_files(void);
  */
 void png_mem_write_data(png_structp png_ptr, png_bytep data, png_size_t length);
 
-#endif
+#endif  // UTILS_UTILS_H_

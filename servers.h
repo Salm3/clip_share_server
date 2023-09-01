@@ -16,10 +16,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _SERVERS_
-#define _SERVERS_
+#ifndef SERVERS_H_
+#define SERVERS_H_
 
-#include "config.h"
+#include "./config.h"
 
 #define INSECURE 0
 #define SECURE 1
@@ -34,12 +34,12 @@ extern int clip_share(const int is_secure);
 /*
  * Start TCP web server.
  */
-extern int web_server();
+extern int web_server(void);
 #endif
 
 /*
  * start UDP server listening for broadcast packets
  */
-extern void udp_server(const unsigned short);
+extern void udp_server(void);
 
-#endif
+#endif  // SERVERS_H_
