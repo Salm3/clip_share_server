@@ -206,7 +206,7 @@ static void parse_line(char *line, config *cfg) {
     } else if (!strcmp("bind_address", key) && ipv4_aton(value, &(cfg->bind_addr)) != EXIT_SUCCESS) {
         char msg[48];
         snprintf_check(msg, 48, "Invalid bind address %s", value);
-        error_exit(msg)
+        error_exit(msg);
     } else if (!strcmp("restart", key)) {
         set_is_true(value, &(cfg->restart));
 #ifdef _WIN32
@@ -220,38 +220,35 @@ static void parse_line(char *line, config *cfg) {
     }
 }
 
-config parse_conf(const char *file_name) {
-    config cfg;
-    cfg.app_port = 0;
-    cfg.insecure_mode_enabled = -1;
+void parse_conf(config *cfg, const char *file_name) {
+    cfg->app_port = 0;
+    cfg->insecure_mode_enabled = -1;
 
-    cfg.app_port_secure = 0;
-    cfg.secure_mode_enabled = -1;
+    cfg->app_port_secure = 0;
+    cfg->secure_mode_enabled = -1;
 
 #ifndef NO_WEB
-    cfg.web_port = 0;
-    cfg.web_mode_enabled = -1;
+    cfg->web_port = 0;
+    cfg->web_mode_enabled = -1;
 #endif
 
-    cfg.priv_key = NULL;
-    cfg.server_cert = NULL;
-    cfg.ca_cert = NULL;
-    cfg.allowed_clients = NULL;
-    cfg.working_dir = NULL;
-    cfg.restart = -1;
+    cfg->priv_key = NULL;
+    cfg->server_cert = NULL;
+    cfg->ca_cert = NULL;
+    cfg->allowed_clients = NULL;
+    cfg->working_dir = NULL;
+    cfg->restart = -1;
 #ifdef _WIN32
-    cfg.tray_icon = -1;
+    cfg->tray_icon = -1;
 #endif
-    if (ipv4_aton(NULL, &(cfg.bind_addr)) != EXIT_SUCCESS) {
-        error_exit("Error initializing bind address")
-    }
+    if (ipv4_aton(NULL, &(cfg->bind_addr)) != EXIT_SUCCESS) error_exit("Error initializing bind address");
 
     if (!file_name) {
 #ifdef DEBUG_MODE
         printf("File name is null\n");
 #endif
         puts("Using default configurations");
-        return cfg;
+        return;
     }
 
     FILE *f = fopen(file_name, "r");
@@ -260,17 +257,17 @@ config parse_conf(const char *file_name) {
         printf("Error opening conf file\n");
 #endif
         puts("Using default configurations");
-        return cfg;
+        return;
     }
 
     char line[LINE_MAX_LEN + 1];
     while (fscanf(f, "%2047[^\n]%*c", line) != EOF) {
         line[LINE_MAX_LEN] = 0;
-        parse_line(line, &cfg);
+        parse_line(line, cfg);
     }
     fclose(f);
 
-    return cfg;
+    return;
 }
 
 void clear_config(config *cfg) {

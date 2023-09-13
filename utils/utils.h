@@ -37,13 +37,6 @@
 #define PATH_SEP '\\'
 #endif
 
-#define error_exit(msg)               \
-    {                                 \
-        error(msg);                   \
-        clear_config(&configuration); \
-        exit(1);                      \
-    }
-
 /*
  * In-memory file to write png image
  */
@@ -72,6 +65,11 @@ int snprintf_check(char *dest, size_t size, const char *fmt, ...) __attribute__(
  * Append error message to error log file
  */
 extern void error(const char *msg);
+
+/*
+ * Append error message to error log file and exit
+ */
+extern void error_exit(const char *msg);
 
 /*
  * Get copied text from clipboard.
@@ -143,12 +141,13 @@ extern int mkdirs(const char *path);
 extern list2 *list_dir(const char *dirname);
 
 /*
+ * Accepts a valid pointer to a dir_files structure
  * Get copied files and directories from the clipboard.
  * Only regular files are included in the file list.
  * Set the path_len to the length of path name of the directory which the files are copied.
- * returns directories and files on success and set the path_len to 0 and file list to NULL on failure.
+ * Sets directories and files in dfiles_p on success and sets the path_len to 0 and file list to NULL on failure.
  */
-extern dir_files get_copied_dirs_files(void);
+extern void get_copied_dirs_files(dir_files *dfiles_p);
 #endif
 
 /*
