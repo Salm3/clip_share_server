@@ -20,12 +20,12 @@
 #define CONFIG_H_
 
 #include <stdint.h>
-
-#include "utils/list_utils.h"
+#include <utils/list_utils.h>
 
 typedef struct _config {
     unsigned short app_port;
     unsigned short app_port_secure;
+    unsigned short udp_port;
     char insecure_mode_enabled;
     char secure_mode_enabled;
 #ifndef NO_WEB
@@ -41,6 +41,7 @@ typedef struct _config {
     char restart;
 #ifdef _WIN32
     char tray_icon;
+    unsigned short display;
 #endif
 } config;
 

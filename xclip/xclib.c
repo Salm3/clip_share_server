@@ -19,17 +19,15 @@
  *  2022-2023 Modified by H. Thevindu J. Wijesekera
  */
 
-#include "./xclib.h"
-
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
+#include <globals.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "../globals.h"
-#include "../utils/utils.h"
-#include "./xcdef.h"
+#include <utils/utils.h>
+#include <xclip/xcdef.h>
+#include <xclip/xclib.h>
 
 /* wrapper for malloc that checks for errors */
 void *xcmalloc(size_t size) {
@@ -85,8 +83,8 @@ static size_t mach_itemsize(int format) {
  * Return value is 1 if the retrieval of the selection data is complete,
  * otherwise it's 0.
  */
-int xcout(Display *dpy, Window win, XEvent evt, Atom sel, Atom target, Atom *type, unsigned char **txt,
-          unsigned long *len, unsigned int *context) {
+int xcout(Display *dpy, Window win, XEvent evt, Atom sel, Atom target, Atom *type, unsigned char **txt_p,
+          unsigned long *len_p, unsigned int *context) {
     /* a property for other windows to put their selection into */
     static Atom pty;
     static Atom inc;
@@ -99,7 +97,7 @@ int xcout(Display *dpy, Window win, XEvent evt, Atom sel, Atom target, Atom *typ
     unsigned long pty_machsize;
 
     /* local buffer of text to return */
-    unsigned char *ltxt = *txt;
+    unsigned char *ltxt = *txt_p;
 
     if (!pty) {
         pty = XInternAtom(dpy, "XCLIP_OUT", False);
@@ -113,9 +111,9 @@ int xcout(Display *dpy, Window win, XEvent evt, Atom sel, Atom target, Atom *typ
         /* there is no context, do an XConvertSelection() */
         case XCLIB_XCOUT_NONE: {
             /* initialise return length to 0 */
-            if (*len > 0) {
-                free(*txt);
-                *len = 0;
+            if (*len_p > 0) {
+                free(*txt_p);
+                *len_p = 0;
             }
 
             /* send a selection request */
@@ -156,12 +154,16 @@ int xcout(Display *dpy, Window win, XEvent evt, Atom sel, Atom target, Atom *typ
             pty_machsize = pty_items * mach_itemsize(pty_format);
 
             /* copy the buffer to the pointer for returned data */
-            ltxt = (unsigned char *)xcmalloc(pty_machsize);
-            memcpy(ltxt, buffer, pty_machsize);
+            if (pty_machsize > 0) {
+                ltxt = (unsigned char *)xcmalloc(pty_machsize);
+                memcpy(ltxt, buffer, pty_machsize);
+            } else {
+                ltxt = NULL;
+            }
 
             /* set the length of the returned data */
-            *len = pty_machsize;
-            *txt = ltxt;
+            *len_p = pty_machsize;
+            *txt_p = ltxt;
 
             /* free the buffer */
             if (buffer) XFree(buffer);
@@ -212,18 +214,20 @@ int xcout(Display *dpy, Window win, XEvent evt, Atom sel, Atom target, Atom *typ
             pty_machsize = pty_items * mach_itemsize(pty_format);
 
             /* allocate memory to accommodate data in *txt */
-            if (*len == 0) {
-                *len = pty_machsize;
-                ltxt = (unsigned char *)xcmalloc(*len);
-            } else {
-                *len += pty_machsize;
-                ltxt = (unsigned char *)xcrealloc(ltxt, *len);
+            if (pty_machsize > 0) {
+                if (*len_p == 0) {
+                    *len_p = pty_machsize;
+                    ltxt = (unsigned char *)xcmalloc(*len_p);
+                } else {
+                    *len_p += pty_machsize;
+                    ltxt = (unsigned char *)xcrealloc(ltxt, *len_p);
+                }
+
+                /* add data to ltxt */
+                memcpy(&ltxt[*len_p - pty_machsize], buffer, pty_machsize);
             }
 
-            /* add data to ltxt */
-            memcpy(&ltxt[*len - pty_machsize], buffer, pty_machsize);
-
-            *txt = ltxt;
+            *txt_p = ltxt;
             if (buffer) XFree(buffer);
 
             /* delete property to get the next item */

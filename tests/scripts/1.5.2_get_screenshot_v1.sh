@@ -5,6 +5,8 @@
 proto=$(printf "\x01" | bin2hex)
 method=$(printf "\x05" | bin2hex)
 
+clear_clipboard
+
 responseDump=$(printf "${proto}${method}" | hex2bin | client_tool | bin2hex | tr -d '\n')
 
 protoAck=$(printf "\x01" | bin2hex)
@@ -15,6 +17,8 @@ len_expected_header="${#expected_proto_method_ack}"
 
 if [ "${responseDump::len_expected_header}" != "${expected_proto_method_ack}" ]; then
     showStatus info "Incorrect protocol:method ack."
+    echo 'Expected:' "${expected_proto_method_ack}"
+    echo 'Received:' "${responseDump::len_expected_header}"
     exit 1
 fi
 

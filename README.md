@@ -3,18 +3,62 @@
 ![Last commit](https://img.shields.io/github/last-commit/thevindu-w/clip_share_server.svg?color=yellow)
 ![License](https://img.shields.io/github/license/thevindu-w/clip_share_server.svg?color=blue)
 
-# Clip Share
+# ClipShare Server
 
-### Copy on one device. Paste on another device
+### Share Clipboard and Files. Copy on one device. Paste on another device
 
 <br>
+
 This is the server that runs in the background. Clients can connect to the server and share copied text, files, and images.
+
+## Download
+
+<table>
+<tr>
+<th>Server</th>
+<th>Client</th>
+</tr>
+<tr>
+<td>
+<a href="https://github.com/thevindu-w/clip_share_server/releases"><img src="https://raw.githubusercontent.com/thevindu-w/clip_share_client/master/fastlane/metadata/android/en-US/images/icon.png" alt="Get it on GitHub" height="100"/></a><br>
+(Download the server from <a href="https://github.com/thevindu-w/clip_share_server/releases">Releases</a>.)
+</td>
+<td>
+<a href="https://apt.izzysoft.de/fdroid/index/apk/com.tw.clipshare"><img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" height="100"/></a><br>
+(Download the client app
+from <a href="https://apt.izzysoft.de/fdroid/index/apk/com.tw.clipshare">apt.izzysoft.de/fdroid/index/apk/com.tw.clipshare</a>.<br>
+or from <a href="https://github.com/thevindu-w/clip_share_client/releases">GitHub Releases</a>.)
+</td>
+</tr>
+</table>
+
 <br>
+
+## Table of Contents
+
+- [Building](#building)
+  - [Build tools](#build-tools)
+    - [Linux](#linux)
+    - [Windows](#windows)
+  - [Dependencies](#dependencies)
+    - [Linux](#linux-1)
+    - [Windows](#windows-1)
+  - [Compiling](#compiling)
+- [How to Use](#how-to-use)
+  - [Run the server](#run-the-server)
+  - [Allow through firewall](#allow-through-firewall)
+  - [Connect the client application](#connect-the-client-application)
+  - [Create SSL/TLS certificate and key files](#create-ssltls-certificate-and-key-files)
+  - [Command line options](#command-line-options)
+  - [Configuration](#configuration)
+
 <br>
 
 ## Building
 
-### Tools
+**Note:** If you prefer using the pre-built binaries from [Releases](https://github.com/thevindu-w/clip_share_server/releases), you may skip this section and start from the [How to Use](#how-to-use) section. 
+
+### Build tools
 
   This needs the following tools,
 
@@ -125,7 +169,19 @@ pacman -S mingw-w64-x86_64-openssl mingw-w64-x86_64-libpng
 <br>
 <br>
 
-## Allow through firewall
+## How to Use
+
+### Run the server
+
+- You can run the server from a terminal or the GUI (if the file manager supports executing programs by double-clicking on it)
+- When the server starts, it will not open any visible window. Instead, it will run in the background.
+- On Linux, if you start the program from the terminal, it should return immediately (the server will continue to run in the background).
+- On Windows, it will show a tray icon unless disabled from the configuration file. You can click on it to stop the server.
+- If something goes wrong, it will create a `server_err.log` file. That file will contain what went wrong.
+
+<br>
+
+### Allow through firewall
 
   This server listens on the following ports (unless different ports are assigned from the configuration),
 
@@ -138,28 +194,44 @@ You may need to allow incoming connections to the above ports for the client to 
 
 <br>
 
-## Create SSL/TLS certificate and key files
+### Connect the client application
+
+You can find an Android client app in [releases](https://github.com/thevindu-w/clip_share_client/releases). You can also get it from [apt.izzysoft.de](https://apt.izzysoft.de/fdroid/index/apk/com.tw.clipshare/). The source of the Android client app is available at [github.com/thevindu-w/clip_share_client](https://github.com/thevindu-w/clip_share_client). Or you may develop a client app according to the protocol specification described in the `docs/`.<br>
+- The client and the server devices should be on the same network. You can do that by connecting both devices to the same Wi-Fi network. It is also possible to use one of the devices as a Wi-Fi hotspot and connect the other device to that hotspot.
+- If the client supports network scanning, it can easily find the server in the network. Otherwise, enter the server's IPv4 address to the client.
+- Now the client can share clipboard data and files and get images from the server.<br>
+Note that the server should allow the client through the firewall, as mentioned in the above section.
+
+<br>
+
+### Create SSL/TLS certificate and key files
 
 **Note**: This section is optional if you do not need the TLS encrypted mode and the web mode.
-<br>
-The following files should be created and placed in the `cert_keys/` directory and specified in the configuration file `clipshare.conf`. You may use different file names and paths to store the keys and certificates. Refer [OpenSSL manual](https://www.openssl.org/docs/manmaster/man1/openssl.html) for more information on generating keys.
+
+The following files should be created, and their paths should be specified in the configuration file `clipshare.conf`. You may use different file names and paths to store the keys and certificates.
 
 * `server.key` &ensp; - &nbsp; SSL/TLS key file for the server
 * `server.crt` &ensp; - &nbsp; SSL/TLS certificate file of the server
-* `ca.crt` &emsp;&emsp;&ensp; - &nbsp; SSL/TLS certificate of the CA which signed the server.crt
+* `ca.crt` &emsp;&emsp;&ensp; - &nbsp; SSL/TLS certificate of the CA, which signed both the server.crt and the client's SSL/TLS certificate
+
+You may use the helper script `keygen.sh` in the [helper_tools/](https://github.com/thevindu-w/clip_share_server/tree/master/helper_tools) directory to generate TLS keys and certificates for both the server and the client. Keep the `clipshare.ext` file in the same directory as the `keygen.sh` script when running the script.
+```bash
+# If you downloaded/cloned the repository and run the script from the repository root,
+chmod +x helper_tools/keygen.sh
+helper_tools/keygen.sh
+
+# If you downloaded the script separately and run the script from within the same directory,
+chmod +x keygen.sh
+./keygen.sh
+```
+
+If you use this script, the server's common name will be `clipshare_server`, and the client's common name will be `clipshare_client`. You may change those names in the `keygen.sh` script.
+
+Refer to the [OpenSSL manual](https://www.openssl.org/docs/manmaster/man1/openssl.html) for more information on generating keys.
 
 <br>
-<br>
 
-## How to use
-### Run the server
-
-- You can run the server from a terminal or the GUI (if the file manager supports executing programs by double-clicking on it)
-- When the server starts, it will not open any visible window. Instead, it will run in the background.
-- On Linux, if you start the program from the terminal, it should return immediately (the server will continue to run in the background).
-- If something goes wrong, it will create a `server_err.log` file. That file will contain what went wrong.
-
-#### Command line options
+### Command line options
 ```
 ./clip_share [-h] [-s] [-r] [-R]
 
@@ -179,22 +251,14 @@ The following files should be created and placed in the `cert_keys/` directory a
                       value in the configuration file.
 ```
 
-### Connect the client application
+### Configuration
 
-You can find an Android client app in [releases](https://github.com/thevindu-w/clip_share_client/releases). You can also get it from [apt.izzysoft.de](https://apt.izzysoft.de/fdroid/index/apk/com.tw.clipshare/). The source of the Android client app is available at [github.com/thevindu-w/clip_share_client](https://github.com/thevindu-w/clip_share_client). Or you may develop a client app according to the protocol specification described in the `docs/`.<br>
-- The client and the server devices should be on the same network. You can do that by connecting both devices to the same Wi-Fi network. It is also possible to use one of the devices as a Wi-Fi hotspot and connect the other device to that hotspot.
-- If the client supports network scanning, it can easily find the server in the network. Otherwise, enter the server's IPv4 address to the client.
-- Now the client can share clipboard data and files and get images from the server.<br>
-Note that the server should allow the client through the firewall, as mentioned in the above section.
-
-<br>
-
-## Configuration
 Create a file named &nbsp; `clipshare.conf` &nbsp; and add the following lines into that configuration file.
 
 ```properties
 app_port=4337
 app_port_secure=4338
+udp_port=4337
 web_port=4339
 insecure_mode_enabled=true
 secure_mode_enabled=true
@@ -218,11 +282,12 @@ Note that all the lines in the configuration file are optional. You may omit som
 | Property | Description | Accepted values | Default |
 |  :----:  | :--------   | :------------   |  :---:  |
 | `insecure_mode_enabled` | Whether or not the application listens for unencrypted connections. The values `true` or `1` will enable it, while `false` or `0` will disable it. | `true`, `false`, `1`, `0` (Case insensitive) | `true` |
-| `app_port` | The port on which the application listens for unencrypted TCP connections. The application listens on the same port for UDP for network scanning. (Values below 1024 may require superuser/admin privileges) | Any valid, unused port number (1 - 65535) | `4337` |
+| `app_port` | The port on which the application listens for unencrypted TCP connections. (Values below 1024 may require superuser/admin privileges) | Any valid, unused TCP port number (1 - 65535) | `4337` |
 | `secure_mode_enabled` | Whether or not the application listens for TLS-encrypted connections. The values `true` or `1` will enable it, while `false` or `0` will disable it. | `true`, `false`, `1`, `0` (Case insensitive) | `false` |
-| `app_port_secure` | The TCP port on which the application listens for TLS-encrypted connections. (Values below 1024 may require superuser/admin privileges) | Any valid, unused port number (1 - 65535) | `4338` |
+| `app_port_secure` | The TCP port on which the application listens for TLS-encrypted connections. (Values below 1024 may require superuser/admin privileges) | Any valid, unused TCP port number (1 - 65535) | `4338` |
+| `udp_port` | The port on which the application listens for UDP broadcasts of network scanning. (Values below 1024 may require superuser/admin privileges) | Any valid, unused UDP port number (1 - 65535) | `4337` |
 | `web_mode_enabled` | Whether or not the application listens for TLS-encrypted connections from web clients if the web mode is available. The values `true` or `1` will enable it, while `false` or `0` will disable it. | `true`, `false`, `1`, `0` (Case insensitive) | `false` |
-| `web_port` | The TCP port on which the application listens for TLS-encrypted connections for web clients. This setting is used only if web mode is available. (Values below 1024 may require superuser/admin privileges) | Any valid, unused port number (1 - 65535) | `4339` |
+| `web_port` | The TCP port on which the application listens for TLS-encrypted connections for web clients. This setting is used only if web mode is available. (Values below 1024 may require superuser/admin privileges) | Any valid, unused TCP port number (1 - 65535) | `4339` |
 | `server_key` | The TLS private key file of the server. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the private key file | \<Unspecified\> |
 | `server_cert` | The TLS certificate file of the server. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the server's TLS certificate file | \<Unspecified\> |
 | `ca_cert` | The TLS certificate file of the CA that signed the TLS certificate of the server. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the TLS certificate file of the CA | \<Unspecified\> |

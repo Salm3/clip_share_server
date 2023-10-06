@@ -16,16 +16,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "./config.h"
-
+#include <config.h>
+#include <globals.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "./globals.h"
-#include "utils/list_utils.h"
-#include "utils/net_utils.h"
-#include "utils/utils.h"
+#include <utils/list_utils.h>
+#include <utils/net_utils.h>
+#include <utils/utils.h>
 
 #define LINE_MAX_LEN 2047
 
@@ -35,19 +33,19 @@
  * The string must point to a valid and null-terminated string.
  * This does not re-allocate memory to shrink.
  */
-static inline void trim(char *string) {
-    const char *ptr = string;
+static inline void trim(char *str) {
+    const char *ptr = str;
     while (0 < *ptr && *ptr <= ' ') {
         ptr++;
     }
-    char *p1 = string;
+    char *p1 = str;
     while (*ptr) {
         *p1 = *ptr;
         p1++;
         ptr++;
     }
     *p1 = 0;
-    if (*string == 0) return;
+    if (*str == 0) return;
     p1--;
     while (0 < *p1 && *p1 <= ' ') {
         *p1 = 0;
@@ -139,7 +137,7 @@ static inline void set_is_true(const char *str, char *conf_ptr) {
  * 65536.
  * Otherwise, does not change the value pointed by conf_ptr
  */
-static inline void set_port(const char *str, unsigned short *conf_ptr) {
+static inline void set_ushort(const char *str, unsigned short *conf_ptr) {
     long port = strtol(str, NULL, 10);
     if (0 < port && port < 65536) {
         *conf_ptr = (unsigned short)port;
@@ -162,29 +160,31 @@ static void parse_line(char *line, config *cfg) {
     trim(key);
     trim(value);
 
+    if (key[0] == '#') return;
+
     const size_t key_len = strnlen(key, LINE_MAX_LEN);
     if (key_len <= 0 || key_len >= LINE_MAX_LEN) return;
 
     const size_t value_len = strnlen(value, LINE_MAX_LEN);
     if (value_len <= 0 || value_len >= LINE_MAX_LEN) return;
 
-    if (key[0] == '#') return;
-
 #ifdef DEBUG_MODE
     printf("Key=%s : Value=%s\n", key, value);
 #endif
 
     if (!strcmp("app_port", key)) {
-        set_port(value, &(cfg->app_port));
+        set_ushort(value, &(cfg->app_port));
     } else if (!strcmp("insecure_mode_enabled", key)) {
         set_is_true(value, &(cfg->insecure_mode_enabled));
     } else if (!strcmp("app_port_secure", key)) {
-        set_port(value, &(cfg->app_port_secure));
+        set_ushort(value, &(cfg->app_port_secure));
     } else if (!strcmp("secure_mode_enabled", key)) {
         set_is_true(value, &(cfg->secure_mode_enabled));
+    } else if (!strcmp("udp_port", key)) {
+        set_ushort(value, &(cfg->udp_port));
 #ifndef NO_WEB
     } else if (!strcmp("web_port", key)) {
-        set_port(value, &(cfg->web_port));
+        set_ushort(value, &(cfg->web_port));
     } else if (!strcmp("web_mode_enabled", key)) {
         set_is_true(value, &(cfg->web_mode_enabled));
 #endif
@@ -196,10 +196,9 @@ static void parse_line(char *line, config *cfg) {
         load_file(value, &(cfg->ca_cert));
     } else if (!strcmp("allowed_clients", key)) {
         list2 *client_list = get_client_list(value);
-        if (client_list) {
-            if (cfg->allowed_clients) free_list(cfg->allowed_clients);
-            cfg->allowed_clients = client_list;
-        }
+        if (client_list == NULL) return;
+        if (cfg->allowed_clients) free_list(cfg->allowed_clients);
+        cfg->allowed_clients = client_list;
     } else if (!strcmp("working_dir", key)) {
         if (cfg->working_dir) free(cfg->working_dir);
         cfg->working_dir = strdup(value);
@@ -212,6 +211,8 @@ static void parse_line(char *line, config *cfg) {
 #ifdef _WIN32
     } else if (!strcmp("tray_icon", key)) {
         set_is_true(value, &(cfg->tray_icon));
+    } else if (!strcmp("display", key)) {
+        set_ushort(value, &(cfg->display));
 #endif
 #ifdef DEBUG_MODE
     } else {
@@ -227,6 +228,8 @@ void parse_conf(config *cfg, const char *file_name) {
     cfg->app_port_secure = 0;
     cfg->secure_mode_enabled = -1;
 
+    cfg->udp_port = 0;
+
 #ifndef NO_WEB
     cfg->web_port = 0;
     cfg->web_mode_enabled = -1;
@@ -240,6 +243,7 @@ void parse_conf(config *cfg, const char *file_name) {
     cfg->restart = -1;
 #ifdef _WIN32
     cfg->tray_icon = -1;
+    cfg->display = 0;
 #endif
     if (ipv4_aton(NULL, &(cfg->bind_addr)) != EXIT_SUCCESS) error_exit("Error initializing bind address");
 

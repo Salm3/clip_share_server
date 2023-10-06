@@ -16,16 +16,15 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <config.h>
 #include <fcntl.h>
+#include <globals.h>
+#include <servers.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "./config.h"
-#include "./globals.h"
-#include "./servers.h"
-#include "utils/net_utils.h"
-#include "utils/utils.h"
+#include <utils/net_utils.h>
+#include <utils/utils.h>
 
 #ifdef __linux__
 #include <ctype.h>
@@ -36,9 +35,8 @@
 #include <openssl/md5.h>
 #include <shellapi.h>
 #include <tlhelp32.h>
-
-#include "win_getopt/getopt.h"
-#include "winres/resource.h"
+#include <win_getopt/getopt.h>
+#include <winres/resource.h>
 #endif
 
 // tcp and udp
@@ -62,6 +60,73 @@ static void print_usage(const char *prog_name) {
     }
 #endif
     fprintf(stderr, "Usage: %s [-h] [-s] [-r] [-R]\n", prog_name);
+}
+
+/*
+ * Parse command line arguments and set corresponding variables
+ */
+static inline void _parse_args(int argc, char **argv, int *stop_p) {
+    int opt;
+    while ((opt = getopt(argc, argv, "hsrR")) != -1) {
+        switch (opt) {
+            case 'h': {  // help
+                print_usage(argv[0]);
+                clear_config(&configuration);
+                exit(EXIT_SUCCESS);
+            }
+            case 's': {  // stop
+                *stop_p = 1;
+                break;
+            }
+            case 'r': {  // restart
+                configuration.restart = 1;
+                break;
+            }
+            case 'R': {  // no-restart
+                configuration.restart = 0;
+                break;
+            }
+            default: {
+                print_usage(argv[0]);
+                clear_config(&configuration);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+}
+
+/*
+ * Change working directory to the directory specified in the configuration
+ */
+static inline void _change_working_dir(void) {
+    if (!is_directory(configuration.working_dir, 1)) {
+        char err[3072];
+        snprintf_check(err, 3072, "Not existing working directory \'%s\'", configuration.working_dir);
+        fprintf(stderr, "%s\n", err);
+        error_exit(err);
+        return;
+    }
+    char *old_work_dir = getcwd(NULL, 0);
+    if (chdir(configuration.working_dir)) {
+        char err[3072];
+        snprintf_check(err, 3072, "Failed changing working directory to \'%s\'", configuration.working_dir);
+        fprintf(stderr, "%s\n", err);
+        error_exit(err);
+        return;
+    }
+    char *new_work_dir = getcwd(NULL, 0);
+    if (old_work_dir == NULL || new_work_dir == NULL) {
+        const char *err = "Error occured during changing working directory.";
+        fprintf(stderr, "%s\n", err);
+        error_exit(err);
+        return;
+    }
+    // if the working directory did not change, set configuration.working_dir to NULL
+    if (!strcmp(old_work_dir, new_work_dir)) {
+        configuration.working_dir = NULL;
+    }
+    free(old_work_dir);
+    free(new_work_dir);
 }
 
 #ifdef __linux__
@@ -293,47 +358,23 @@ int main(int argc, char **argv) {
 
     // Apply defaults
     int stop = 0;
-    if (configuration.restart <= 0) configuration.restart = 1;
+    if (configuration.restart < 0) configuration.restart = 1;
     if (configuration.app_port <= 0) configuration.app_port = APP_PORT;
-    if (configuration.insecure_mode_enabled <= 0) configuration.insecure_mode_enabled = 1;
+    if (configuration.insecure_mode_enabled < 0) configuration.insecure_mode_enabled = 1;
     if (configuration.app_port_secure <= 0) configuration.app_port_secure = APP_PORT_SECURE;
-    if (configuration.secure_mode_enabled <= 0) configuration.secure_mode_enabled = 0;
+    if (configuration.secure_mode_enabled < 0) configuration.secure_mode_enabled = 0;
+    if (configuration.udp_port <= 0) configuration.udp_port = APP_PORT;
 #ifndef NO_WEB
     if (configuration.web_port <= 0) configuration.web_port = WEB_PORT;
-    if (configuration.web_mode_enabled <= 0) configuration.web_mode_enabled = 0;
+    if (configuration.web_mode_enabled < 0) configuration.web_mode_enabled = 0;
 #endif
 #ifdef _WIN32
     if (configuration.tray_icon < 0) configuration.tray_icon = 1;
+    if (configuration.display <= 0) configuration.display = 1;
 #endif
 
     // Parse command line arguments
-    int opt;
-    while ((opt = getopt(argc, argv, "hsrR")) != -1) {
-        switch (opt) {
-            case 'h': {  // help
-                print_usage(argv[0]);
-                clear_config(&configuration);
-                exit(EXIT_SUCCESS);
-            }
-            case 's': {  // stop
-                stop = 1;
-                break;
-            }
-            case 'r': {  // restart
-                configuration.restart = 1;
-                break;
-            }
-            case 'R': {  // no-restart
-                configuration.restart = 0;
-                break;
-            }
-            default: {
-                print_usage(argv[0]);
-                clear_config(&configuration);
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
+    _parse_args(argc, argv, &stop);
 
 #ifdef _WIN32
     // initialize instance and guid
@@ -356,33 +397,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (configuration.working_dir) {
-        if (!is_directory(configuration.working_dir, 1)) {
-            char err[3072];
-            snprintf_check(err, 3072, "Not existing working directory \'%s\'", configuration.working_dir);
-            fprintf(stderr, "%s\n", err);
-            error_exit(err);
-        }
-        char *old_work_dir = getcwd(NULL, 0);
-        if (chdir(configuration.working_dir)) {
-            char err[3072];
-            snprintf_check(err, 3072, "Failed changing working directory to \'%s\'", configuration.working_dir);
-            fprintf(stderr, "%s\n", err);
-            error_exit(err);
-        }
-        char *new_work_dir = getcwd(NULL, 0);
-        if (old_work_dir == NULL || new_work_dir == NULL) {
-            const char *err = "Error occured during changing working directory.";
-            fprintf(stderr, "%s\n", err);
-            error_exit(err);
-        }
-        // if the working directory did not change, set configuration.working_dir to NULL
-        if (!strcmp(old_work_dir, new_work_dir)) {
-            configuration.working_dir = NULL;
-        }
-        free(old_work_dir);
-        free(new_work_dir);
-    }
+    if (configuration.working_dir) _change_working_dir();
 
 #ifdef __linux__
     if (configuration.insecure_mode_enabled) {

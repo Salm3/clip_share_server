@@ -9,6 +9,8 @@ method=$(printf "\x02" | bin2hex)
 length=$(printf "%016x" "${#sample}")
 sampleDump=$(printf "${sample}" | bin2hex)
 
+clear_clipboard
+
 response=$(printf "${proto}${method}${length}${sampleDump}" | hex2bin | client_tool | bin2hex | tr -d '\n')
 
 protoAck=$(printf "\x01" | bin2hex)
@@ -18,6 +20,8 @@ expected="${protoAck}${methodAck}"
 
 if [ "${response}" != "${expected}" ]; then
     showStatus info "Incorrect server response."
+    echo 'Expected:' "$expected"
+    echo 'Received:' "$responseDump"
     exit 1
 fi
 
@@ -25,5 +29,7 @@ clip="$(get_copied_text || echo fail)"
 
 if [ "${clip}" != "${sample}" ]; then
     showStatus info "Clipcoard content not matching."
+    echo 'Expected:' "$sample"
+    echo 'Received:' "$clip"
     exit 1
 fi

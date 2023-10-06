@@ -24,10 +24,10 @@
 #include <winsock2.h>
 #endif
 
-#include "./globals.h"
-#include "./servers.h"
-#include "utils/net_utils.h"
-#include "utils/utils.h"
+#include <globals.h>
+#include <servers.h>
+#include <utils/net_utils.h>
+#include <utils/utils.h>
 
 // MSG_WAITALL should not be used. Reset it to 0
 #ifdef _WIN32
@@ -46,7 +46,7 @@ typedef int socklen_t;
 #endif
 
 void udp_server(void) {
-    if (configuration.app_port <= 0) return;
+    if (configuration.udp_port <= 0) return;
 
     listener_t listener;
     open_listener_socket(&listener, UDP_SOCK, NULL, NULL, NULL);
@@ -58,7 +58,7 @@ void udp_server(void) {
     puts("UDP socket created");
 #endif
 
-    if (bind_port(listener, configuration.app_port) != EXIT_SUCCESS) {
+    if (bind_port(listener, configuration.udp_port) != EXIT_SUCCESS) {
         return;
     }
 
