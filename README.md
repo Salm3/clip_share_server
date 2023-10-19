@@ -56,7 +56,7 @@ or from <a href="https://github.com/thevindu-w/clip_share_client/releases">GitHu
 
 ## Building
 
-**Note:** If you prefer using the pre-built binaries from [Releases](https://github.com/thevindu-w/clip_share_server/releases), you may skip this section and start from the [How to Use](#how-to-use) section. 
+**Note:** If you prefer using the pre-built binaries from [Releases](https://github.com/thevindu-w/clip_share_server/releases), you may skip this section and start from the [How to Use](#how-to-use) section.
 
 ### Build tools
 
@@ -106,22 +106,23 @@ or from <a href="https://github.com/thevindu-w/clip_share_client/releases">GitHu
 * libxmu
 * libpng
 * libssl
+* libunistring
 
   They can be installed with the following command:
 
 * On Debian-based or Ubuntu-based distros,
   ```bash
-  sudo apt-get install libc6-dev libx11-dev libxmu-dev libpng-dev libssl-dev
+  sudo apt-get install libc6-dev libx11-dev libxmu-dev libpng-dev libssl-dev libunistring-dev
   ```
 
 * On Redhat-based or Fedora-based distros,
   ```bash
-  sudo yum install glibc-devel libX11-devel libXmu-devel libpng-devel openssl-devel
+  sudo yum install glibc-devel libX11-devel libXmu-devel libpng-devel openssl-devel libunistring-devel
   ```
 
 * On Arch-based distros,
   ```bash
-  sudo pacman -S libx11 libxmu libpng openssl
+  sudo pacman -S libx11 libxmu libpng openssl libunistring
   ```
 
   glibc should already be available on Arch distros. But you may need to upgrade it with the following command. (You need to do this only if the build fails)
@@ -130,7 +131,7 @@ or from <a href="https://github.com/thevindu-w/clip_share_client/releases">GitHu
   sudo pacman -S glibc
   ```
 
-(You may refer to docker/Dockerfile\* to see how to install the dependencies on various Linux distros)
+(You may refer to docker/Dockerfile.\* to see how to install the dependencies on various Linux distros)
 
 #### Windows
 
@@ -139,10 +140,11 @@ or from <a href="https://github.com/thevindu-w/clip_share_client/releases">GitHu
 * [libz](https://packages.msys2.org/package/mingw-w64-x86_64-libzip?repo=mingw64)
 * [libpng16](https://packages.msys2.org/package/mingw-w64-x86_64-libpng?repo=mingw64)
 * [libssl](https://packages.msys2.org/package/mingw-w64-x86_64-openssl?repo=mingw64) (provided by OpenSSL)
+* [libunistring](https://packages.msys2.org/package/mingw-w64-x86_64-libunistring?repo=mingw64)
 
 In an [MSYS2](https://www.msys2.org/) environment, these tools can be installed using pacman with the following command:
 ```bash
-pacman -S mingw-w64-x86_64-openssl mingw-w64-x86_64-libpng
+pacman -S mingw-w64-x86_64-openssl mingw-w64-x86_64-libpng mingw-w64-x86_64-libunistring
 ```
 <br>
 
@@ -272,6 +274,7 @@ bind_address=0.0.0.0
 restart=true
 
 # Windows only
+display=1
 tray_icon=true
 ```
 
@@ -292,10 +295,11 @@ Note that all the lines in the configuration file are optional. You may omit som
 | `server_cert` | The TLS certificate file of the server. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the server's TLS certificate file | \<Unspecified\> |
 | `ca_cert` | The TLS certificate file of the CA that signed the TLS certificate of the server. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the TLS certificate file of the CA | \<Unspecified\> |
 | `allowed_clients` | The text file containing a list of allowed clients (Common Name of client certificate), one name per each line. If this is not specified, secure mode (and web mode if available) will be disabled. | Absolute or relative path to the allowed-clients file | \<Unspecified\> |
-| `working_dir` | The working directory where the application should run. All the files, that are sent from a client, will be saved in this directory. It will follow symlinks if this is a path to a symlink. The user running this application should have write access to the directory | Absolute or relative path to an existing directory | . (Current directory) |
+| `working_dir` | The working directory where the application should run. All the files, that are sent from a client, will be saved in this directory. It will follow symlinks if this is a path to a symlink. The user running this application should have write access to the directory | Absolute or relative path to an existing directory | `.` (Current directory) |
 | `bind_address` | The address of the interface to which the application should bind when listening for connections. It will listen on all interfaces if this is set to `0.0.0.0` | IPv4 address of an interface in dot-decimal notation (ex: 192.168.37.5) or `0.0.0.0` | `0.0.0.0` |
 | `restart` | Whether the application should start or restart by default. The values `true` or `1` will make the server restart by default, while `false` or `0` will make it just start without stopping any running instances of the server. | `true`, `false`, `1`, `0` (Case insensitive) | `true` |
 | `tray_icon` | Whether the application should display a system tray icon. This option is available only on Windows. The values `true` or `1` will display a tray icon, while `false` or `0` will prevent displaying a tray icon. | `true`, `false`, `1`, `0` (Case insensitive) | `true` |
+| `display` | The display that should be used for screenshots.  This option is available only on Windows. | Display number (1 - 65535) | `1` |
 
 <br>
 

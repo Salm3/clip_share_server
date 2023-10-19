@@ -23,6 +23,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <unistr.h>
 #include <utils/net_utils.h>
 #include <utils/utils.h>
 
@@ -71,11 +72,16 @@ int get_text_v1(socket_t *socket) {
         puts("");
     }
 #endif
+    ssize_t new_len = convert_eol(&buf, 1);
+    if (new_len < 0) {
+        write_sock(socket, &(char){STATUS_NO_DATA}, 1);
+        return EXIT_SUCCESS;
+    }
     if (write_sock(socket, &(char){STATUS_OK}, 1) == EXIT_FAILURE) {
         free(buf);
         return EXIT_FAILURE;
     }
-    if (send_size(socket, (ssize_t)length) == EXIT_FAILURE) {
+    if (send_size(socket, new_len) == EXIT_FAILURE) {
         free(buf);
         return EXIT_FAILURE;
     }
@@ -106,9 +112,18 @@ int send_text_v1(socket_t *socket) {
     }
     close_socket(socket);
     data[length] = 0;
+    if (u8_check((uint8_t *)data, (size_t)length)) {
+#ifdef DEBUG_MODE
+        fputs("Invalid UTF-8\n", stderr);
+#endif
+        free(data);
+        return EXIT_FAILURE;
+    }
 #ifdef DEBUG_MODE
     if (length < 1024) puts(data);
 #endif
+    length = convert_eol(&data, 0);
+    if (length < 0) return EXIT_FAILURE;
     put_clipboard_text(data, (size_t)length);
     free(data);
     return EXIT_SUCCESS;
@@ -148,7 +163,7 @@ static int _transfer_single_file(int version, socket_t *socket, const char *file
         return EXIT_FAILURE;
     }
 
-    FILE *fp = fopen(file_path, "rb");
+    FILE *fp = open_file(file_path, "rb");
     if (!fp) {
         error("Couldn't open some files");
         return EXIT_FAILURE;
@@ -231,6 +246,9 @@ static int _get_files_common(int version, socket_t *socket, list2 *file_list, si
 #endif
 
         if (_transfer_single_file(version, socket, file_path, path_len) != EXIT_SUCCESS) {
+#ifdef DEBUG_MODE
+            puts("Transfer failed");
+#endif
             free_list(file_list);
             return EXIT_FAILURE;
         }
@@ -243,7 +261,7 @@ static int _get_files_common(int version, socket_t *socket, list2 *file_list, si
  * Common function to save files in send_files method of v1 and v2.
  */
 static int _save_file_common(socket_t *socket, const char *file_name) {
-    FILE *file = fopen(file_name, "wb");
+    FILE *file = open_file(file_name, "wb");
     if (!file) return EXIT_FAILURE;
 
     ssize_t file_size = read_size(socket);
@@ -348,6 +366,13 @@ int send_file_v1(socket_t *socket) {
         return EXIT_FAILURE;
     }
     file_name[name_length] = 0;
+    if (u8_check((uint8_t *)file_name, (size_t)name_length)) {
+#ifdef DEBUG_MODE
+        fputs("Invalid UTF-8\n", stderr);
+#endif
+        return EXIT_FAILURE;
+    }
+
     if (_get_base_name(file_name, (size_t)name_length) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     // PATH_SEP is not allowed in file name
@@ -448,6 +473,12 @@ static int save_file(socket_t *socket, const char *dirname) {
     }
 
     file_name[name_length] = 0;
+    if (u8_check((uint8_t *)file_name, (size_t)name_length)) {
+#ifdef DEBUG_MODE
+        fputs("Invalid UTF-8\n", stderr);
+#endif
+        return EXIT_FAILURE;
+    }
 
 #if PATH_SEP != '/'
     // replace '/' with PATH_SEP
@@ -504,7 +535,7 @@ static int _check_and_rename(const char *filename, const char *dirname) {
         if (snprintf_check(new_path, name_len + 20, ".%c%i_%s", PATH_SEP, n++, filename)) return EXIT_FAILURE;
     }
 
-    if (rename(old_path, new_path)) {
+    if (rename_file(old_path, new_path)) {
 #ifdef DEBUG_MODE
         printf("Rename failed : %s\n", new_path);
 #endif
@@ -539,7 +570,7 @@ int send_files_v2(socket_t *socket) {
         if (_check_and_rename(filename, dirname) != EXIT_SUCCESS) status = EXIT_FAILURE;
     }
     free_list(files);
-    if (status == EXIT_SUCCESS && rmdir(dirname)) status = EXIT_FAILURE;
+    if (status == EXIT_SUCCESS && remove_directory(dirname)) status = EXIT_FAILURE;
     return status;
 }
 #endif
