@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 18
       - name: Install Dependencies
-        run: sudo apt-get -y install gcc make libc6-dev libx11-dev libxmu-dev libpng-dev libssl-dev
+        run: sudo apt-get -y install gcc make libc6-dev libx11-dev libxmu-dev libpng-dev libssl-dev libunistring-dev
       - name: Install sonar-scanner and build-wrapper
         uses: SonarSource/sonarcloud-github-c-cpp@v1
       - name: Run build-wrapper
